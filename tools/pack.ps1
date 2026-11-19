@@ -10,7 +10,7 @@ The package includes NVIDIA's Video Effects runtime for frame generation and RTX
 works without a first download. -NoNvidia leaves it out; the app then downloads it on first start.
 
 It also includes the RIFE models (about 140 MB), built with tools/rife/export.py, which needs
-Python with torch and onnx. Models already in ThirdParty/models are reused. -NoRife leaves them out.
+Python with torch and onnx. Models already in ThirdParty/models are reused (delete them to rebuild). -NoRife leaves them out.
 
 The output folder holds Setup.exe, the full package and the release files. The Release workflow
 runs this script and publishes the folder as a GitHub release, where installed apps find updates.
@@ -38,8 +38,10 @@ if (-not $NoNvidia) {
 }
 
 if (-not $NoRife) {
-    python tools/rife/export.py --out ThirdParty/models | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "building the RIFE models failed" }
+    if (-not (Test-Path ThirdParty/models/rife*.onnx)) {
+        python tools/rife/export.py --out ThirdParty/models | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "building the RIFE models failed" }
+    }
     New-Item -ItemType Directory -Force (Join-Path $publish "models") | Out-Null
     Copy-Item ThirdParty/models/rife*.onnx (Join-Path $publish "models")
 }

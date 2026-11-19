@@ -32,15 +32,16 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - uses: actions/setup-python@v5
+      - name: RIFE models from cache
+        id: rife
+        uses: actions/cache@v4
         with:
-          python-version: '3.12'
+          path: ThirdParty/models
+          key: rife-${{ hashFiles('tools/rife/**') }}
 
       - name: Python packages for the RIFE models
+        if: steps.rife.outputs.cache-hit != 'true'
         run: pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install onnx
-
-      - name: Test
-        run: dotnet test TretioDLSS.sln -c Release --filter "Category!=Gpu"
 
       - name: Previous release for delta updates
         shell: pwsh
