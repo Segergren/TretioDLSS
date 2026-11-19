@@ -1,0 +1,7 @@
+{
+  "csharp.experimental.debug.hotReload": true,
+  "csharp.debug.hotReloadOnSave": true,
+  "csharp.debug.hotReloadVerbosity": "minimal",
+  "dotnet.defaultSolution": "TretioDLSS.sln",
+  "files.eol": "\n"
+}

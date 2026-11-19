@@ -1,0 +1,317 @@
+@import 'tailwindcss';
+
+/* Desktop app: hover styles apply whenever the pointer is over something, also on touch-capable screens. */
+@custom-variant hover (&:hover);
+@plugin "daisyui" {
+  themes: false;
+  exclude: scrollbar;
+}
+
+@plugin "daisyui/theme" {
+  name: 'tretio';
+  default: true;
+  color-scheme: dark;
+  --color-base-100: #0e1014;
+  --color-base-200: #15191f;
+  --color-base-300: #1d222a;
+  --color-base-content: #e6e8ec;
+  --color-primary: #ff5a5f;
+  --color-primary-content: #12151a;
+  --color-secondary: #4c7bd9;
+  --color-secondary-content: #ffffff;
+  --color-accent: #ffa45c;
+  --color-accent-content: #12151a;
+  --color-neutral: #0b0d10;
+  --color-neutral-content: #e6e8ec;
+  --color-info: #7ea2ec;
+  --color-info-content: #12151a;
+  --color-success: #3ddc97;
+  --color-success-content: #12151a;
+  --color-warning: #ffd166;
+  --color-warning-content: #12151a;
+  --color-error: #ff4d4d;
+  --color-error-content: #12151a;
+  --radius-box: 1rem;
+  --radius-field: 0.625rem;
+  --radius-selector: 0.5rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+@theme {
+  --color-midnight: #0b0d10;
+  --color-night: #0e1014;
+  --color-boulevard: #15191f;
+  --color-marquee: #1d222a;
+  --color-edge: rgb(255 255 255 / 0.08);
+  --color-edge-strong: rgb(255 255 255 / 0.16);
+  --color-chalk: #ffffff;
+  --color-haze: #e6e8ec;
+  --color-dusk: #929aa8;
+  --color-flamingo: #ff5a5f;
+  --color-flamingo-hi: #ff7a7e;
+  --color-ultraviolet-hi: #b39cff;
+  --color-ocean: #4c7bd9;
+  --color-ocean-hi: #7ea2ec;
+  --color-lagoon: #5ec4c0;
+  --color-tangerine: #ffa45c;
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-display: 'IBM Plex Sans Condensed', 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+:root {
+  /* Flat accent everywhere: no gradients in this palette. */
+  --accent-fill: var(--color-flamingo);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-night);
+  color: var(--color-haze);
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  cursor: default;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+input,
+textarea {
+  user-select: text;
+}
+
+/* Keyboard focus: Chalk outline, never on mouse click */
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid var(--color-chalk);
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-edge);
+  border: 3px solid transparent;
+  border-radius: 9999px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-edge-strong);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.text-accent {
+  color: var(--color-flamingo);
+}
+
+.bg-accent-fill {
+  background: var(--color-flamingo);
+}
+
+.eyebrow {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  line-height: 16px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-dusk);
+}
+
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Signal line flow */
+@keyframes signal-flow {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+.signal-flow {
+  animation: signal-flow 2.4s linear infinite;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.8);
+  }
+}
+.live-pulse {
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.panel-in {
+  animation: panel-in 200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signal-flow,
+  .live-pulse,
+  .panel-in {
+    animation: none;
+  }
+}
+
+/* Range slider: Edge Strong track, Flamingo fill via --fill, Chalk thumb */
+.tr-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    var(--color-flamingo) 0%,
+    var(--color-flamingo) var(--fill, 0%),
+    var(--color-edge-strong) var(--fill, 0%),
+    var(--color-edge-strong) 100%
+  );
+}
+.tr-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: var(--color-chalk);
+  transition: transform 150ms ease;
+}
+.tr-range:hover::-webkit-slider-thumb {
+  transform: scale(1.25);
+}
+.tr-range:disabled {
+  opacity: 0.5;
+}
+
+/* Cinema look: frost surfaces over the picture, and the blurred backdrop of the whole window. */
+@layer components {
+  .frost {
+    background: rgb(18 21 26 / 0.62);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+  .frost-light {
+    background: rgb(255 255 255 / 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+}
+.backdrop-image {
+  position: fixed;
+  inset: -80px;
+  background-position: center;
+  background-size: cover;
+  filter: blur(60px) saturate(1.2);
+  opacity: 0.26;
+  pointer-events: none;
+  transition: opacity 600ms ease;
+}
+.backdrop-fade {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(180deg, rgb(14 16 20 / 0.35), var(--color-night) 72%);
+  pointer-events: none;
+}
+.hero-shade {
+  background:
+    linear-gradient(90deg, rgb(14 16 20 / 0.9) 0%, rgb(14 16 20 / 0.4) 45%, rgb(14 16 20 / 0) 72%),
+    linear-gradient(0deg, rgb(14 16 20 / 0.88), rgb(14 16 20 / 0) 48%);
+}
+
+/* Cursors: a hand on everything that acts, "not allowed" on what is switched off, a caret in text fields.
+   In the base layer so a utility class (for example a tile that is locked while live) can override it. */
+@layer base {
+  button,
+  a[href],
+  summary,
+  select,
+  label[for],
+  [role='button'],
+  [role='option'],
+  [role='switch'],
+  [role='tab'],
+  [role='combobox'],
+  input[type='checkbox'],
+  input[type='radio'],
+  input[type='range'] {
+    cursor: pointer;
+  }
+  button:disabled,
+  select:disabled,
+  input:disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+  input[type='text'],
+  input[type='number'],
+  input[type='search'],
+  textarea {
+    cursor: text;
+  }
+  /* A small press response on every enabled button. */
+  button:not(:disabled):active {
+    transform: scale(0.98);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button:not(:disabled):active {
+      transform: none;
+    }
+  }
+}

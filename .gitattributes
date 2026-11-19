@@ -1,0 +1,12 @@
+* text=auto eol=lf
+
+# Visual Studio rewrites solution files with CRLF.
+*.sln text eol=crlf
+
+*.png binary
+*.ico binary
+*.jpg binary
+*.mp4 binary
+*.onnx binary
+*.dll binary
+*.lib binary

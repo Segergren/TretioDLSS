@@ -1,0 +1,46 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "frontend: vite",
+      "detail": "Vite dev server on port 2992 with hot reload. Counts as started at npm's plain '> vite' line; the app itself waits until Vite answers.",
+      "type": "npm",
+      "script": "dev",
+      "path": "Frontend",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "vite",
+        "pattern": { "regexp": "^x{0}$" },
+        "background": {
+          "activeBegins": true,
+          "beginsPattern": "tretiodlss-frontend",
+          "endsPattern": "> vite"
+        }
+      },
+      "presentation": { "reveal": "silent", "panel": "dedicated", "group": "dev" }
+    },
+    {
+      "label": "backend: build",
+      "detail": "Debug build without the embedded frontend (Vite serves it while debugging)",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/TretioDLSS.csproj", "-c", "Debug", "-p:SkipFrontend=true", "/property:GenerateFullPaths=true", "/consoleloggerparameters:NoSummary"],
+      "problemMatcher": "$msCompile",
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "silent", "panel": "dedicated", "group": "dev" }
+    },
+    {
+      "label": "dev: start",
+      "dependsOn": ["frontend: vite", "backend: build"],
+      "dependsOrder": "parallel"
+    },
+    {
+      "label": "test",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["test", "${workspaceFolder}/TretioDLSS.sln"],
+      "problemMatcher": "$msCompile",
+      "group": { "kind": "test", "isDefault": true }
+    }
+  ]
+}

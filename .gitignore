@@ -1,0 +1,58 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+publish/
+/output/
+artifacts/
+*.binlog
+
+# Visual Studio / Rider / VS Code
+.vs/
+*.user
+*.suo
+*.userprefs
+.idea/
+
+# Frontend
+node_modules/
+Frontend/dist/
+Resources/wwwroot/*
+!Resources/wwwroot/.gitkeep
+
+# Native shim build output
+Native/build/
+Native/out/
+
+# Third-party SDKs and runtimes are large downloads fetched by script
+ThirdParty/*
+!ThirdParty/README.md
+!ThirdParty/fetch.ps1
+!ThirdParty/manifest.json
+
+# Local test media and captures
+TestMedia/*
+!TestMedia/README.md
+*.dump.png
+*.etl
+presentmon-*.csv
+
+# Logs and local settings
+*.log
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Frontend embed output and local test output
+Resources/wwwroot/
+
+# Velopack output
+releases/
+
+# Python
+__pycache__/
+*.pyc

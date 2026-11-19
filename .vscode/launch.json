@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "TretioDLSS (hot reload)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "dev: start",
+      "program": "${workspaceFolder}/bin/Debug/net10.0-windows10.0.26100.0/win-x64/TretioDLSS.exe",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "TRETIO_DEV": "1"
+      },
+      "console": "internalConsole",
+      "justMyCode": true,
+      "stopAtEntry": false
+    },
+    {
+      "name": "UI with the mock backend (browser)",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/Frontend",
+      "program": "${workspaceFolder}/Frontend/mock/server.mjs",
+      "console": "integratedTerminal",
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "ready in",
+        "uriFormat": "http://localhost:2992/?token=dev&wsPort=44130"
+      }
+    }
+  ]
+}

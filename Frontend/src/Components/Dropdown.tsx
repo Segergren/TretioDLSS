@@ -1,0 +1,235 @@
+import { ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { Check, ChevronDown, Download } from 'lucide-react';
+
+export interface DropdownOption<T extends string> {
+  value: T;
+  label: string;
+  detail?: string;
+  disabled?: boolean;
+  reason?: string;
+  /** A button inside the row, for example a download that makes a disabled option usable. */
+  action?: { label: string; run: () => void; busy?: boolean; progress?: number };
+  /** Small buttons inside the row that pick a variant directly, for example the frame multiplier. */
+  choices?: { label: string; selected: boolean; run: () => void }[];
+}
+
+interface Props<T extends string> {
+  value: T;
+  options: DropdownOption<T>[];
+  onChange: (value: T) => void;
+  ariaLabel: string;
+  size?: 'md' | 'sm';
+  className?: string;
+  placeholder?: string;
+  surface?: 'night' | 'boulevard';
+  disabled?: boolean;
+  align?: 'left' | 'right';
+  /** Fixed trigger text, for places where the selected value is already shown elsewhere. */
+  triggerLabel?: string;
+  /** Replaces the field look entirely, for example a frost tile; gets the open state. */
+  renderTrigger?: (open: boolean) => ReactNode;
+  triggerClassName?: string;
+}
+
+export function Dropdown<T extends string>({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+  size = 'md',
+  className = '',
+  placeholder = 'Select',
+  surface = 'night',
+  disabled,
+  align = 'left',
+  triggerLabel,
+  renderTrigger,
+  triggerClassName,
+}: Props<T>) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const [dropUp, setDropUp] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const id = useId();
+  const selected = options.find((o) => o.value === value);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  // Open upward when the real menu does not fit below the trigger but does fit above it.
+  useLayoutEffect(() => {
+    if (!open || !rootRef.current) return;
+    const rect = rootRef.current.getBoundingClientRect();
+    const listHeight = listRef.current?.offsetHeight ?? Math.min(options.length * 60 + 12, 340);
+    setDropUp(window.innerHeight - rect.bottom < listHeight + 16 && rect.top > listHeight + 16);
+  }, [open, options.length]);
+
+  const choose = (opt: DropdownOption<T>) => {
+    if (opt.disabled) return;
+    onChange(opt.value);
+    setOpen(false);
+  };
+
+  const onKey = (e: React.KeyboardEvent) => {
+    if (disabled) return;
+    if (!open && (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      setOpen(true);
+      setActive(Math.max(0, options.findIndex((o) => o.value === value)));
+      return;
+    }
+    if (!open) return;
+    if (e.key === 'Escape') {
+      setOpen(false);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActive((i) => Math.min(options.length - 1, i + 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActive((i) => Math.max(0, i - 1));
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      const opt = options[active];
+      if (opt?.disabled && opt.action && !opt.action.busy) opt.action.run();
+      else if (opt) choose(opt);
+    } else if (e.key === 'Tab') {
+      setOpen(false);
+    }
+  };
+
+  const h = size === 'md' ? 'h-10 text-[0.9375rem]' : 'h-8 text-[0.8125rem]';
+  const fill = surface === 'night' ? 'bg-night' : 'bg-boulevard';
+
+  return (
+    <div ref={rootRef} className={`relative min-w-0 ${className}`}>
+      <button
+        type="button"
+        role="combobox"
+        aria-label={ariaLabel}
+        aria-expanded={open}
+        aria-controls={id}
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={onKey}
+        className={
+          renderTrigger
+            ? `w-full min-w-0 text-left ${triggerClassName ?? ''}`
+            : `flex w-full min-w-0 items-center gap-2 rounded-xl border border-edge-strong px-3.5 leading-none text-chalk transition-colors duration-200 enabled:hover:border-dusk disabled:opacity-50 ${h} ${fill}`
+        }
+      >
+        {renderTrigger ? (
+          renderTrigger(open)
+        ) : (
+          <>
+            <span className={`min-w-0 flex-1 truncate py-0.5 text-left leading-normal ${selected || triggerLabel ? '' : 'text-dusk'}`}>
+              {triggerLabel ?? selected?.label ?? placeholder}
+            </span>
+            <ChevronDown
+              size={16}
+              className={`shrink-0 text-dusk transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+              aria-hidden
+            />
+          </>
+        )}
+      </button>
+      {open && (
+        <ul
+          ref={listRef}
+          id={id}
+          role="listbox"
+          className={`absolute z-50 max-h-[340px] min-w-full overflow-y-auto rounded-2xl border border-edge bg-boulevard p-1.5 ${
+            dropUp ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+          } ${align === 'right' ? 'right-0' : 'left-0'}`}
+          style={{ width: 'max-content', maxWidth: 400 }}
+        >
+          {options.map((opt, i) => {
+            const isSel = opt.value === value;
+            return (
+              <li
+                key={opt.value}
+                role="option"
+                aria-selected={isSel}
+                aria-disabled={opt.disabled && !opt.action}
+                onMouseEnter={() => setActive(i)}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => choose(opt)}
+                className={`flex items-start gap-2.5 rounded-xl px-2.5 py-2 ${
+                  opt.disabled ? 'cursor-not-allowed' : 'cursor-pointer'
+                } ${i === active && (!opt.disabled || opt.action) ? 'bg-marquee' : ''}`}
+              >
+                <span className="flex h-5 w-4 shrink-0 items-center justify-center">
+                  {isSel && <Check size={16} className="text-flamingo" aria-hidden />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span
+                    className={`block text-[0.9375rem] leading-5 ${opt.disabled ? 'text-haze/50' : isSel ? 'text-chalk' : 'text-haze'}`}
+                  >
+                    {opt.label}
+                  </span>
+                  {(opt.reason || opt.detail) && (
+                    <span className="mt-0.5 block text-[0.8125rem] leading-[18px] text-dusk tabular-nums">
+                      {opt.reason ?? opt.detail}
+                    </span>
+                  )}
+                  {opt.action?.busy && (
+                    <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-night" aria-hidden>
+                      <span
+                        className="block h-full rounded-full bg-flamingo transition-[width] duration-300"
+                        style={{ width: `${Math.round((opt.action.progress ?? 0) * 100)}%` }}
+                      />
+                    </span>
+                  )}
+                </span>
+                {opt.choices && !opt.disabled && (
+                  <span className="flex shrink-0 items-center gap-1 self-center" role="group" aria-label={`${opt.label} multiplier`}>
+                    {opt.choices.map((c) => (
+                      <button
+                        key={c.label}
+                        type="button"
+                        tabIndex={-1}
+                        aria-pressed={c.selected}
+                        aria-label={`${opt.label} ${c.label}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          c.run();
+                          setOpen(false);
+                        }}
+                        className={`flex h-7 min-w-9 cursor-pointer items-center justify-center rounded-full px-2.5 text-[0.8125rem] font-semibold tabular-nums transition-colors duration-200 ${
+                          c.selected ? 'bg-chalk text-night' : 'border border-edge-strong text-haze hover:border-dusk hover:text-chalk'
+                        }`}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
+                  </span>
+                )}
+                {opt.action && !opt.action.busy && (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    aria-label={`${opt.action.label} ${opt.label}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      opt.action!.run();
+                    }}
+                    className="flex h-7 shrink-0 cursor-pointer items-center gap-1.5 self-center rounded-full border border-edge-strong px-3 text-[0.8125rem] font-medium text-chalk transition-colors duration-200 hover:border-dusk hover:bg-night"
+                  >
+                    <Download size={14} aria-hidden />
+                    {opt.action.label}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
