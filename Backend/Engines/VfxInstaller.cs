@@ -144,9 +144,10 @@ public static class VfxInstaller
                 }
             }
 
-            string? check = TestLoad(feature.Selector);
+            // Packaging may run without an NVIDIA GPU; the hashes already prove the files.
+            string? check = TargetOverride == null ? TestLoad(feature.Selector) : null;
             if (check != null) throw new IOException(check);
-            Log.Information("{Id} installed in {Dir}; NvVFX_CreateEffect({Selector}) works", id, InstallDir, feature.Selector);
+            Log.Information("{Id} installed in {Dir}; load check {Check}", id, InstallDir, TargetOverride == null ? "passed" : "skipped for packaging");
             lock (_gate) _states[id] = new("done", 1, 0, null);
             return null;
         }
