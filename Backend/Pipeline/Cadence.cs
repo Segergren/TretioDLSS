@@ -125,6 +125,9 @@ public sealed class CadenceDetector
     private const int StaticAfter = 8;
     /// <summary>Scaler noise on repeated frames from a capture card (measured up to 0.8).</summary>
     private const double NoiseFloor = 1.0;
+    private const double MinNoise = 0.1;
+    private const double MaxNoise = 1.2;
+    private double _noise;
 
     private readonly CadenceOptions _o;
     private readonly int _window;
@@ -164,12 +167,23 @@ public sealed class CadenceDetector
         return changes.Length == 0 ? double.PositiveInfinity : changes[changes.Length / 2];
     }
 
+    /// <summary>Largest difference a repeat can show: the learned repeat noise with a margin.</summary>
+    private double RepeatLimit => Math.Max(MinNoise, _noise * 1.3);
+
     private bool IsRepeatLevel(double d)
     {
         if (double.IsInfinity(d)) return false;
         if (d >= _o.RepeatCeiling) return false;
+        if (d <= RepeatLimit) return true;
+        // Once locked, anything above the repeat noise is a new picture, however small the motion.
+        if (State != CadenceState.Unlocked) return false;
         double med = MedianChange();
-        return double.IsInfinity(med) || d * 8 < med || (d < NoiseFloor && d * 3 < med);
+        return !double.IsInfinity(med) && (d * 8 < med || (d < NoiseFloor && d * 3 < med));
+    }
+
+    private void LearnNoise(double d)
+    {
+        if (double.IsFinite(d) && d < _o.RepeatCeiling) _noise = Math.Min(MaxNoise, Math.Max(d, _noise * 0.998));
     }
 
     /// <summary>Classifies the next container frame. True means it carries a new picture.</summary>
@@ -189,6 +203,7 @@ public sealed class CadenceDetector
         }
 
         long slot = Mod(i - _phaseOrigin, _cycle);
+        if (slot != 0 && State == CadenceState.Locked) LearnNoise(diff);
         if (slot == 0)
         {
             _lastRealSlotIndex = i;
@@ -277,6 +292,9 @@ public sealed class CadenceDetector
             int phase = BestPhase(flags, n, out int errors);
             if (errors <= Math.Max(1, flags.Length / 20))
             {
+                var diffs = _hist.Select(h => h.Diff).ToArray();
+                for (int k = 0; k < diffs.Length; k++)
+                    if (Mod(k - phase, n) != 0) LearnNoise(diffs[k]);
                 Lock(n, start + phase);
                 return;
             }

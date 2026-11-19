@@ -57,6 +57,26 @@ public class CadenceTests
     }
 
     [Fact]
+    public void SlowMotionAfterFastMotionDoesNotFreezeOneToOne()
+    {
+        var d = New(hz: 30, ceiling: 1.5);
+        Feed(d, Enumerable.Repeat(14.0, 120));
+        var flags = Feed(d, Enumerable.Repeat(0.4, 120));
+        Assert.All(flags, Assert.True);
+    }
+
+    [Fact]
+    public void SlowMotionAboveCardNoiseStaysReal()
+    {
+        var rng = new Random(7);
+        var d = New(ceiling: 1.5);
+        Feed(d, Enumerable.Range(0, 300).Select(i => i % 2 == 0 ? 10 + rng.NextDouble() * 4 : 0.6 + rng.NextDouble() * 0.2));
+        var flags = Feed(d, Enumerable.Range(0, 240).Select(i => i % 2 == 0 ? 1.3 : 0.6 + rng.NextDouble() * 0.2));
+        Assert.Equal("2:2", d.Label);
+        Assert.Equal(120, flags.Count(f => f));
+    }
+
+    [Fact]
     public void SlowMotionInsideLockStaysReal()
     {
         var d = New();
