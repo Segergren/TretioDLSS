@@ -47,7 +47,7 @@ if (-not $NoRife) {
 }
 
 dotnet tool restore | Out-Null
-dotnet vpk pack --packId TretioDLSS --packVersion $Version --packDir $publish --mainExe TretioDLSS.exe --packTitle TretioDLSS --icon Resources\icon.ico --outputDir $Output
+dotnet vpk pack --packId TretioDLSS --packVersion $Version --packDir $publish --mainExe TretioDLSS.exe --packTitle TretioDLSS --icon Resources\icon.ico --noPortable --outputDir $Output
 if ($LASTEXITCODE -ne 0) { throw "vpk pack failed" }
 
 Get-ChildItem $Output | Select-Object Name, Length
