@@ -6,6 +6,8 @@ A Windows app that takes a live console picture (HDMI capture card or a PS Remot
 
 Made for 30 fps console games like GTA VI (Grand Theft Auto 6) on PS5 and Xbox Series X|S: plug the console into a capture card, and play it on your PC monitor at 60, 120 fps or more, sharper and smoother than the console sends it.
 
+![UI](.github/media/ui.png)
+
 ## Features
 
 - Capture cards through Media Foundation, with the card's sound passed through in sync. Window capture for PS Remote Play.

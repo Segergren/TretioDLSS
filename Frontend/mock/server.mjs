@@ -82,7 +82,7 @@ const state = {
     { name: '30 to 120', builtIn: true, summary: 'In-app frame generation x4' },
     { name: 'Lowest delay', builtIn: true, summary: 'No frame generation, FSR 1' },
   ],
-  devices: scenario === 'nodevice' ? [] : [{ id: 'gm29f', name: 'USB3 Video (GM-29F)', formats }],
+  devices: scenario === 'nodevice' ? [] : [{ id: 'gm29f', name: process.env.MOCK_DEVICE ?? 'USB3 Video (GM-29F)', formats }],
   windows: [
     { hwnd: '1', title: 'PS Remote Play', process: 'RemotePlay.exe' },
     { hwnd: '2', title: 'chiaki-ng', process: 'chiaki.exe' },
@@ -118,7 +118,7 @@ const state = {
     { id: 'amd-frc', name: 'AMD Frame Generation', available: false, reason: 'The picture runs on a non-AMD GPU', fixHint: 'Runs only when the picture is on the AMD GPU', multipliers: [2] },
     { id: 'rife', name: 'RIFE', available: true, multipliers: [2, 3, 4], options: [{ key: 'model', label: 'Model', values: [{ value: 'rife426', label: 'Quality (RIFE 4.26)' }, { value: 'rife46', label: 'Fast (RIFE 4.6)' }] }] },
   ],
-  pipeline: { status: 'idle' },
+  pipeline: { status: process.env.MOCK_AUTOSTART ? 'running' : 'idle' },
   gpuName: 'NVIDIA GeForce RTX 4090',
   hints: scenario === 'hint' ? [{ id: 'hdcp', level: 'warning', text: 'The picture is black. Check the HDMI cable. On a PS5, turn off HDCP under Settings, System, HDMI.' }] : [],
 };
@@ -302,6 +302,7 @@ wss.on('connection', (ws, req) => {
   });
 });
 
+if (process.env.MOCK_AUTOSTART) startTicker();
 console.log(`[mock] WebSocket on ws://localhost:${wsPort}, scenario "${scenario}"`);
 console.log('[mock] open http://localhost:2992/?token=dev');
 
