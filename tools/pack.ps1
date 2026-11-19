@@ -12,8 +12,8 @@ works without a first download. -NoNvidia leaves it out; the app then downloads 
 It also includes the RIFE models (about 140 MB), built with tools/rife/export.py, which needs
 Python with torch and onnx. Models already in ThirdParty/models are reused. -NoRife leaves them out.
 
-The output folder holds Setup.exe, the full package and RELEASES. Pointing the app's update
-source (Settings, Advanced) at that folder lets an installed app update from it.
+The output folder holds Setup.exe, the full package and the release files. The Release workflow
+runs this script and publishes the folder as a GitHub release, where installed apps find updates.
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Version,

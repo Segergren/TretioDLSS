@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (for example 0.1.0)'
+        required: true
+        type: string
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check version
+        shell: pwsh
+        run: |
+          if ('${{ inputs.version }}' -notmatch '^\d+\.\d+\.\d+$') { throw "Version must look like 1.2.3" }
+          if (git ls-remote --tags https://github.com/${{ github.repository }} "refs/tags/v${{ inputs.version }}") { throw "Tag v${{ inputs.version }} already exists" }
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Frontend/package-lock.json
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Python packages for the RIFE models
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install onnx
+
+      - name: Test
+        run: dotnet test TretioDLSS.sln -c Release --filter "Category!=Gpu"
+
+      - name: Previous release for delta updates
+        shell: pwsh
+        run: |
+          dotnet tool restore
+          dotnet vpk download github --repoUrl https://github.com/${{ github.repository }} --token ${{ secrets.GITHUB_TOKEN }} -o releases
+          if ($LASTEXITCODE -ne 0) { Write-Host "No previous release, building a full package only"; $global:LASTEXITCODE = 0 }
+
+      - name: Build and pack
+        shell: pwsh
+        run: ./tools/pack.ps1 -Version ${{ inputs.version }} -Output releases
+
+      - name: Publish GitHub release
+        shell: pwsh
+        run: dotnet vpk upload github --repoUrl https://github.com/${{ github.repository }} --token ${{ secrets.GITHUB_TOKEN }} -o releases --tag v${{ inputs.version }} --releaseName "TretioDLSS ${{ inputs.version }}" --targetCommitish ${{ github.sha }} --publish
