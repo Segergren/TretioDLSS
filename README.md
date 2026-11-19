@@ -1,6 +1,6 @@
 # TretioDLSS
 
-https://github.com/user-attachments/assets/45add9f9-92ce-48b9-9e6c-511fee81eb07
+https://github.com/user-attachments/assets/a8d96d64-7c55-4995-b955-77fe6599925b
 
 A Windows app that takes a live console picture (HDMI capture card or a PS Remote Play window), upscales it and generates extra frames, and shows it on a monitor or TV with as little added delay as possible. "Tretio" is Swedish for thirty: 30 fps in, 60 or more out.
 
