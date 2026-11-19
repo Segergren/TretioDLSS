@@ -2,6 +2,8 @@
 
 A Windows app that takes a live console picture (HDMI capture card or a PS Remote Play window), upscales it and generates extra frames, and shows it on a monitor or TV with as little added delay as possible. "Tretio" is Swedish for thirty: 30 fps in, 60 or more out.
 
+Made for 30 fps console games like GTA VI (Grand Theft Auto 6) on PS5 and Xbox Series X|S: plug the console into a capture card, and play it on your PC monitor at 60, 120 fps or more, sharper and smoother than the console sends it.
+
 ## Features
 
 - Capture cards through Media Foundation, with the card's sound passed through in sync. Window capture for PS Remote Play.
