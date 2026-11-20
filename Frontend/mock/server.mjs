@@ -98,7 +98,12 @@ const state = {
 * **TV:** Fixed the picture stopping after about 15 seconds at 4K 120 fps.` },
           { version: '0.6.2', notes: '* **Capture:** Fixed the picture staying black when the console was turned on after Start.' },
         ]
-      : [],
+      : scenario === 'notes-long'
+        ? Array.from({ length: 8 }, (_, v) => ({
+            version: `0.${9 - v}.0`,
+            notes: Array.from({ length: 6 }, (_, k) => `* **Area ${k + 1}:** Fixed something that was noticeable in version 0.${9 - v}, described in one plain sentence.`).join(String.fromCharCode(10)),
+          }))
+        : [],
   tvs: [{ id: 'tv:uuid:lg-g2', name: 'LG OLED55G26LA', model: 'OLED55G26LA', address: '192.168.1.30', webOs: true }],
   stream:
     scenario === 'tv'
