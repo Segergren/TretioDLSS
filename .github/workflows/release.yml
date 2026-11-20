@@ -21,6 +21,8 @@ jobs:
           if (git ls-remote --tags https://github.com/${{ github.repository }} "refs/tags/v${{ inputs.version }}") { throw "Tag v${{ inputs.version }} already exists" }
 
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -57,3 +59,12 @@ jobs:
       - name: Publish GitHub release
         shell: pwsh
         run: dotnet vpk upload github --repoUrl https://github.com/${{ github.repository }} --token ${{ secrets.GITHUB_TOKEN }} -o releases --tag v${{ inputs.version }} --releaseName "TretioDLSS ${{ inputs.version }}" --targetCommitish ${{ github.sha }} --publish
+
+      - name: Release notes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          git fetch --tags --force
+          ./tools/release-notes.ps1 -Tag v${{ inputs.version }}
