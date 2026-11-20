@@ -279,7 +279,11 @@ public sealed class PipelineHost : IFrameSink, IDisposable
             timer = new GpuTimer(g.Device, g.Context, Stages.Names);
             timer.Completed += Stages.Add;
 
-            if (_cfg.Monitor != null)
+            if (_cfg.SinkFactory != null)
+            {
+                _sink = _cfg.SinkFactory(g);
+            }
+            else if (_cfg.Monitor != null)
             {
                 window = new OutputWindow(_cfg.Monitor, _cfg.Borderless, _cfg.NoActivate, _cfg.WindowTitle);
                 _windowHandle = window.Handle;

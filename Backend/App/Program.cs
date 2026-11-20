@@ -53,6 +53,13 @@ public static class Program
         try
         {
             if (cli.Headless) return HeadlessRunner.Run(cli);
+            if (cli.StreamHostSeconds > 0) return StreamHostTool.Run(cli, cli.StreamHostSeconds);
+            if (cli.TvScan)
+            {
+                foreach (var tv in Streaming.TvDiscovery.ScanAsync().GetAwaiter().GetResult())
+                    Console.WriteLine($"{tv.Name} | model {tv.Model} | {tv.Manufacturer} | {tv.Address} | id {tv.Id}");
+                return 0;
+            }
             if (cli.PatternWindow != null) return PatternWindow.Run(cli.PatternWindow);
             if (cli.CaptureInfo) return Tools.CaptureInfo();
             if (cli.RecordRaw is { } rec) return Tools.RecordRaw(cli, rec.Seconds, rec.Dir);

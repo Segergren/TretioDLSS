@@ -28,6 +28,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Concentus" Version="2.2.3" />
     <PackageReference Include="DiscordRichPresence" Version="1.6.1.70" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.24.4" />
     <PackageReference Include="PhotinoX" Version="5.4.1" />
@@ -86,6 +87,21 @@
     <ItemGroup>
       <None Include="Native\build\TretioNgx.dll" Condition="Exists('Native\build\TretioNgx.dll')" Link="TretioNgx.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
       <None Include="ThirdParty\dlss\bin\nvngx_dlssg.dll" Condition="Exists('ThirdParty\dlss\bin\nvngx_dlssg.dll')" Link="nvngx_dlssg.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Built-in GameStream host for Moonlight: ENet, FEC, NVENC and DNS-SD; all sources are in Native/TretioStream. -->
+  <ItemGroup>
+    <TretioStreamSources Include="Native\TretioStream\*.cpp;Native\TretioStream\build.ps1;Native\TretioStream\vendor\**\*.c;Native\TretioStream\vendor\**\*.h" />
+  </ItemGroup>
+
+  <Target Name="BuildTretioStream" Inputs="@(TretioStreamSources)" Outputs="Native\build\TretioStream.dll">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File Native\TretioStream\build.ps1" />
+  </Target>
+
+  <Target Name="IncludeTretioStream" BeforeTargets="AssignTargetPaths" DependsOnTargets="BuildTretioStream">
+    <ItemGroup>
+      <None Include="Native\build\TretioStream.dll" Condition="Exists('Native\build\TretioStream.dll')" Link="TretioStream.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
 

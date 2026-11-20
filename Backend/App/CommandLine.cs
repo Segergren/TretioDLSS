@@ -45,9 +45,12 @@ public sealed class CommandLine
     public string Hdr { get; private set; } = "auto";
     public string AudioIn { get; private set; } = "loopback";
     public bool Minimized { get; private set; }
+    public double StreamHostSeconds { get; private set; }
+    public string? Pin { get; private set; }
+    public bool TvScan { get; private set; }
     public List<string> Unknown { get; } = new();
 
-    public bool IsToolMode => Headless || PatternWindow != null || CaptureInfo || RecordRaw != null || LatencyTest || Install != null;
+    public bool IsToolMode => Headless || StreamHostSeconds > 0 || TvScan || PatternWindow != null || CaptureInfo || RecordRaw != null || LatencyTest || Install != null;
 
     /// <summary>Paths are relative to where the user started the exe; the app changes its directory later.</summary>
     private void ResolvePaths()
@@ -127,6 +130,9 @@ public sealed class CommandLine
                 case "--audio-test": c.AudioTestSeconds = NextD(); break;
                 case "--hdr": c.Hdr = Next(); break;
                 case "--audio-in": c.AudioIn = Next(); break;
+                case "--stream-host": c.StreamHostSeconds = NextD(); break;
+                case "--pin": c.Pin = Next(); break;
+                case "--tv-scan": c.TvScan = true; break;
                 default: c.Unknown.Add(a); break;
             }
         }

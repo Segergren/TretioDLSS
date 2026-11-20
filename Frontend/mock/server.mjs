@@ -43,7 +43,7 @@ const settings = {
   upscale: { engine: 'vfx-vsr', size: 'display', sharpness: 0.2, options: { quality: 'high' } },
   frameGen: { engine: 'vfx-vfg', multiplier: 2, model: 'medium', version: '', stageOrder: 'auto', options: {} },
   display: {
-    monitorId: 'mon1',
+    monitorId: scenario === 'tv' ? 'tv:uuid:lg-g2' : 'mon1',
     mode: 'borderless',
     sync: 'auto',
     pacing: 'auto',
@@ -63,7 +63,7 @@ const settings = {
   advanced: { adapter: 'auto', logLevel: 'info', vfxRuntimePath: '' },
   ui: { closeToTray: false },
   discord: { enabled: false, game: 'Grand Theft Auto VI', startTime: '' },
-  activeProfile: '30 to 60',
+  activeProfile: 'Profile 1',
 };
 
 const formats = [
@@ -78,9 +78,7 @@ const state = {
   version: '0.1.0',
   settings,
   profiles: [
-    { name: '30 to 60', builtIn: true, summary: 'NVIDIA Frame Generation x2, RTX Video' },
-    { name: '30 to 120', builtIn: true, summary: 'In-app frame generation x4' },
-    { name: 'Lowest delay', builtIn: true, summary: 'No frame generation, FSR 1' },
+    { name: 'Profile 1', summary: '1440p30, NVIDIA FG x4, RTX Video' },
   ],
   devices: scenario === 'nodevice' ? [] : [{ id: 'gm29f', name: process.env.MOCK_DEVICE ?? 'USB3 Video (GM-29F)', formats }],
   windows: [
@@ -91,6 +89,11 @@ const state = {
     { id: 'mon1', name: 'Odyssey G60SD', width: 2560, height: 1440, refresh: 360, vrr: true, hdr: false, primary: true, tv: false, adapter: 'NVIDIA GeForce RTX 4090' },
     { id: 'mon2', name: 'LG ULTRAGEAR', width: 2560, height: 1440, refresh: 144, vrr: true, hdr: false, primary: false, tv: false, adapter: 'NVIDIA GeForce RTX 4090' },
   ],
+  tvs: [{ id: 'tv:uuid:lg-g2', name: 'LG OLED55G26LA', model: 'OLED55G26LA', address: '192.168.1.30', webOs: true }],
+  stream:
+    scenario === 'tv'
+      ? { running: true, port: 47989, error: null, waitingPin: 'LG webOS TV', clients: ['roth'], session: null }
+      : { running: false, port: null, error: null, waitingPin: null, clients: [], session: null },
   audioInputs: [{ id: 'cardaudio', name: 'Digital Audio Interface (USB3 Video)' }],
   audioOutputs: [{ id: 'spk', name: 'Speakers (Sound BlasterX AE-5 Plus)', isDefault: true }],
   upscalers: [
@@ -214,6 +217,40 @@ wss.on('connection', (ws, req) => {
         break;
       case 'SelectProfile':
         state.settings.activeProfile = Parameters.name;
+        broadcast('State', state);
+        break;
+      case 'NewProfile': {
+        let i = 2;
+        while (state.profiles.some((p) => p.name === `Profile ${i}`)) i++;
+        const current = state.profiles.find((p) => p.name === state.settings.activeProfile);
+        state.profiles.push({ name: `Profile ${i}`, summary: current?.summary ?? '' });
+        state.settings.activeProfile = `Profile ${i}`;
+        broadcast('State', state);
+        break;
+      }
+      case 'RenameProfile': {
+        const p = state.profiles.find((x) => x.name === Parameters.name);
+        const to = String(Parameters.to ?? '').trim();
+        if (p && to && !state.profiles.some((x) => x !== p && x.name.toLowerCase() === to.toLowerCase())) {
+          if (state.settings.activeProfile === p.name) state.settings.activeProfile = to;
+          p.name = to;
+        }
+        broadcast('State', state);
+        break;
+      }
+      case 'SubmitPin':
+      case 'CancelPin':
+        state.stream.waitingPin = null;
+        broadcast('State', state);
+        break;
+      case 'ScanTvs':
+        broadcast('State', state);
+        break;
+      case 'DeleteProfile':
+        if (state.profiles.length > 1) {
+          state.profiles = state.profiles.filter((x) => x.name !== Parameters.name);
+          if (state.settings.activeProfile === Parameters.name) state.settings.activeProfile = state.profiles[0].name;
+        }
         broadcast('State', state);
         break;
       case 'StartPipeline':

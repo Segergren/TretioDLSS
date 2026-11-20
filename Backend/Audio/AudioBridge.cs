@@ -155,9 +155,17 @@ public sealed class AdaptiveResampler
     }
 }
 
+public delegate void AudioTap(ReadOnlySpan<float> interleaved, int sampleRate);
+
 /// <summary>Moves the capture card's sound to the output device with a controlled delay.</summary>
 public sealed class AudioBridge : IDisposable
 {
+    /// <summary>Receives the captured stereo samples as they arrive, for the TV stream.</summary>
+    public AudioTap? Tap { get; set; }
+
+    /// <summary>Silences the local output, for example while the sound goes to the TV.</summary>
+    public bool MuteLocal { get; set; }
+
     private const double BaseBufferMs = 30;
     private WasapiRecorder? _recorder;
     private WasapiPlayer? _player;
@@ -283,6 +291,7 @@ public sealed class AudioBridge : IDisposable
             sr += r * r;
         }
         lock (_levelGate) { _sumL += sl; _sumR += sr; _levelFrames += frames; }
+        Tap?.Invoke(_convert.AsSpan(0, frames * 2), _inFormat.SampleRate);
         _resampler.Write(_convert.AsSpan(0, frames * 2));
     }
 
@@ -306,7 +315,7 @@ public sealed class AudioBridge : IDisposable
             if (_buf.Length < samples) _buf = new float[samples];
             var span = _buf.AsSpan(0, samples);
             bridge._resampler?.Read(span);
-            float v = bridge._volume;
+            float v = bridge.MuteLocal ? 0 : bridge._volume;
             for (int i = 0; i < samples; i++) BitConverter.TryWriteBytes(buffer.Slice(i * 4, 4), span[i] * v);
             return buffer.Length;
         }

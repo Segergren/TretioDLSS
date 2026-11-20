@@ -14,6 +14,7 @@ import { Button } from '../Components/Button';
 import { Dropdown, type DropdownOption } from '../Components/Dropdown';
 import { StartButton } from '../Components/StartButton';
 import { StatTile } from '../Components/StatTile';
+import { TvPanel } from '../Components/TvPanel';
 import { useStore } from '../lib/store';
 import {
   currentSourceName,
@@ -21,7 +22,9 @@ import {
   engineOptions,
   formatDelay,
   formatHz,
-  monitorDetail,
+  isTvOutput,
+  outputChoices,
+  outputName,
   sourceChoices,
   sourceDetail,
 } from '../lib/options';
@@ -36,7 +39,7 @@ export function PlayPage({ onOpenSettings }: { onOpenSettings: (section: string)
 
   const upscaler = state.upscalers.find((e) => e.id === s.upscale.engine);
   const frameGen = state.frameGenerators.find((e) => e.id === s.frameGen.engine);
-  const monitor = state.monitors.find((m) => m.id === s.display.monitorId) ?? state.monitors.find((m) => m.primary);
+  const tvOut = isTvOutput(state);
   const sourceOk = sourceReady(state);
 
   const frameGenTitle = s.frameGen.engine === 'off' ? 'Off' : (frameGen?.name ?? s.frameGen.engine);
@@ -59,9 +62,9 @@ export function PlayPage({ onOpenSettings }: { onOpenSettings: (section: string)
     status === 'running' ? 'Live' : status === 'starting' ? 'Starting' : status === 'waiting' ? 'Waiting' : status === 'faulted' ? 'Error' : 'Ready';
 
   return (
-    <div className="mx-auto flex max-w-[1400px] flex-col gap-6 px-9 pt-1 pb-9">
+    <div className="mx-auto flex max-w-[1400px] flex-col gap-4 px-9 pt-1 pb-5">
       <section
-        className="relative isolate z-20 h-[438px] rounded-[28px] border border-edge bg-boulevard"
+        className={`relative isolate z-20 rounded-[28px] border border-edge bg-boulevard ${tvOut ? 'h-[344px]' : 'h-[438px]'}`}
         aria-label="Picture"
       >
         {/* Only the picture is clipped to the rounded corners, so menus from the tiles can extend past the hero. */}
@@ -69,12 +72,13 @@ export function PlayPage({ onOpenSettings }: { onOpenSettings: (section: string)
           {status === 'running' && preview ? (
             <img src={`data:image/jpeg;base64,${preview}`} alt="Live picture" className="absolute inset-0 h-full w-full object-cover" />
           ) : (
-            <IdleBackdrop />
+            <IdleBackdrop compact={tvOut} />
           )}
           <div className="hero-shade absolute inset-0" aria-hidden />
         </div>
 
-        <div className="absolute top-12 left-9 w-[min(520px,60%)]">
+        {/* With a TV picked, the TV panel below needs room, so the hero is shorter and the window does not scroll. */}
+        <div className={`absolute left-9 w-[min(520px,60%)] ${tvOut ? 'top-8' : 'top-12'}`}>
           <h1 className="truncate pb-1.5 font-display text-[2.75rem] leading-[48px] font-bold text-chalk">{currentSourceName(state)}</h1>
           <div className="mt-1.5 flex flex-wrap gap-2">
             <Tag>
@@ -107,7 +111,9 @@ export function PlayPage({ onOpenSettings }: { onOpenSettings: (section: string)
             {live
               ? `Stop with ${s.hotkeys.toggleRun}, leave fullscreen with ${s.hotkeys.exitFullscreen}`
               : sourceOk
-                ? 'The picture opens on the output display'
+                ? tvOut
+                  ? 'The picture goes to the TV through Moonlight'
+                  : 'The picture opens on the output display'
                 : 'Pick a source below to start'}
           </p>
         </div>
@@ -149,20 +155,22 @@ export function PlayPage({ onOpenSettings }: { onOpenSettings: (section: string)
           <StageTile
             icon={Monitor}
             label="Output"
-            value={monitor?.name ?? 'No display'}
+            value={outputName(state)}
             ariaLabel="Output display"
             disabled={live}
-            current={monitor?.id ?? ''}
-            options={state.monitors.map((m) => ({ value: m.id, label: m.name, detail: monitorDetail(m) }))}
+            current={s.display.monitorId}
+            options={outputChoices(state)}
+            align="right"
             onChange={(monitorId) => update({ display: { monitorId } })}
           />
         </div>
       </section>
 
-      {(state.pipeline.status === 'faulted' || state.pipeline.status === 'waiting') && state.pipeline.message && (
+      {(state.pipeline.status === 'faulted' || (state.pipeline.status === 'waiting' && !tvOut)) && state.pipeline.message && (
         <Notice level={state.pipeline.status === 'faulted' ? 'error' : 'warning'} text={state.pipeline.message} />
       )}
-      {state.hints.map((h) => (
+      {tvOut && <TvPanel />}
+      {state.hints.filter((h) => !(tvOut && h.id === 'tvwait' && h.level === 'info')).map((h) => (
         <Notice
           key={h.id}
           level={h.level}
@@ -177,9 +185,9 @@ export function PlayPage({ onOpenSettings }: { onOpenSettings: (section: string)
 }
 
 /** Shown in the hero while nothing runs: the app icon, large and quiet. */
-function IdleBackdrop() {
+function IdleBackdrop({ compact }: { compact?: boolean }) {
   return (
-    <div className="absolute inset-0 flex items-center justify-end pr-[8%]" aria-hidden>
+    <div className={`absolute inset-0 flex items-center justify-end pr-[8%] ${compact ? 'pb-20' : ''}`} aria-hidden>
       <svg viewBox="0 0 256 200" className="h-[62%] text-white/[0.05]">
         {/* The gray frame is cut away under the coral one, so the coral frame reads as lying on top. */}
         <mask id="idle-front-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="200">
@@ -210,6 +218,7 @@ function StageTile<T extends string>({
   disabled,
   current,
   options,
+  align,
   onChange,
 }: {
   icon: LucideIcon;
@@ -221,6 +230,7 @@ function StageTile<T extends string>({
   disabled?: boolean;
   current: T;
   options: DropdownOption<T>[];
+  align?: 'left' | 'right';
   onChange: (v: T) => void;
 }) {
   return (
@@ -230,6 +240,7 @@ function StageTile<T extends string>({
       options={options}
       onChange={onChange}
       disabled={disabled}
+      align={align}
       triggerClassName="frost flex h-16 items-center gap-3 rounded-[18px] border border-edge px-4 transition-colors duration-200 enabled:hover:border-edge-strong"
       renderTrigger={(open) => (
         <>
@@ -317,6 +328,10 @@ function sourceReady(state: AppState) {
 
 function outputSummary(state: AppState) {
   const s = state.settings;
+  if (isTvOutput(state)) {
+    const ss = state.stream.session;
+    return ss?.width ? `${outputName(state)}, ${ss.width} x ${ss.height}, ${ss.fps} fps` : `${outputName(state)}, through Moonlight`;
+  }
   const m = state.monitors.find((x) => x.id === s.display.monitorId) ?? state.monitors.find((x) => x.primary);
   if (!m) return 'No display';
   const sync =

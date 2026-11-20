@@ -18,12 +18,12 @@ export function StatTile({
   sparkColor?: string;
 }) {
   return (
-    <div className="relative flex min-w-0 flex-col justify-between overflow-hidden rounded-[20px] border border-edge bg-boulevard px-[18px] pt-4 pb-3.5">
+    <div className="relative flex min-w-0 flex-col justify-between overflow-hidden rounded-[20px] border border-edge bg-boulevard px-[18px] pt-3.5 pb-3">
       <div className="flex h-4 items-center gap-1.5">
         <span className="eyebrow truncate leading-4">{label}</span>
         {estimated && <span className="text-[0.6875rem] leading-none font-medium text-dusk">est.</span>}
       </div>
-      <div className="mt-2 flex items-baseline gap-1.5">
+      <div className="mt-1.5 flex items-baseline gap-1.5">
         {warning && <AlertTriangle size={18} className="shrink-0 self-center text-warning" aria-hidden />}
         <span
           className={`font-display tabular text-[2.25rem] leading-none font-semibold ${warning ? 'text-warning' : 'text-chalk'}`}

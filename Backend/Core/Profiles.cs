@@ -1,49 +1,28 @@
 namespace TretioDLSS.Core;
 
-public sealed record ProfileInfo(string Name, bool BuiltIn, string Summary);
+public sealed record ProfileInfo(string Name, string Summary);
 
+/// <summary>Named setups. Every settings change is stored into the active profile, so the last one used comes back on start.</summary>
 public static class Profiles
 {
-    public static readonly ProfileData[] BuiltIns =
-    [
-        new()
-        {
-            Name = "30 to 60",
-            Upscale = new UpscaleSettings { Engine = "vfx-vsr", Sharpness = 0.2 },
-            FrameGen = new FrameGenSettings { Engine = "vfx-vfg", Multiplier = 2, Model = "medium" },
-            Pacing = "auto",
-        },
-        new()
-        {
-            Name = "30 to 120",
-            Upscale = new UpscaleSettings { Engine = "vfx-vsr", Sharpness = 0.2 },
-            FrameGen = new FrameGenSettings { Engine = "vfx-vfg", Multiplier = 4, Model = "medium" },
-            Pacing = "auto",
-        },
-        new()
-        {
-            Name = "Lowest delay",
-            Upscale = new UpscaleSettings { Engine = "fsr1", Sharpness = 0.25 },
-            FrameGen = new FrameGenSettings { Engine = "off", Multiplier = 1 },
-            Pacing = "immediate",
-        },
-    ];
-
-    public static IEnumerable<ProfileData> All(Settings s) => BuiltIns.Concat(s.Profiles);
+    public const string DefaultName = "Profile 1";
 
     public static ProfileData? Find(Settings s, string name) =>
-        All(s).FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+        s.Profiles.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
 
     public static string Summary(ProfileData p)
     {
+        var src = p.Source;
+        string input = src.Kind == "uvc" ? $"{src.Height}p{Math.Round(src.Fps)}" : src.Kind;
         string fg = p.FrameGen.Engine switch
         {
-            "off" => "No frame generation",
-            "vfx-vfg" => $"NVIDIA Frame Generation x{p.FrameGen.Multiplier}",
-            "dlss-fg" => $"DLSS Frame Generation x{p.FrameGen.Multiplier}",
-            "blend" => $"Blend x{p.FrameGen.Multiplier}",
+            "off" => "no frame generation",
+            "vfx-vfg" => $"NVIDIA FG x{p.FrameGen.Multiplier}",
+            "dlss-fg" => $"DLSS FG x{p.FrameGen.Multiplier}",
             "rife" => $"RIFE x{p.FrameGen.Multiplier}",
-            _ => p.FrameGen.Engine,
+            "amd-frc" => $"AMD FG x{p.FrameGen.Multiplier}",
+            "blend" => $"Blend x{p.FrameGen.Multiplier}",
+            var x => x,
         };
         string up = p.Upscale.Engine switch
         {
@@ -53,32 +32,62 @@ public static class Profiles
             "nis" => "NIS",
             var x => x,
         };
-        return $"{fg}, {up}";
+        return $"{input}, {fg}, {up}";
     }
 
-    public static IEnumerable<ProfileInfo> List(Settings s) =>
-        All(s).Select(p => new ProfileInfo(p.Name, BuiltIns.Contains(p), Summary(p)));
+    public static IEnumerable<ProfileInfo> List(Settings s) => s.Profiles.Select(p => new ProfileInfo(p.Name, Summary(p)));
 
-    /// <summary>Copies the profile's processing choices onto the settings. Hardware choices stay.</summary>
+    /// <summary>Makes sure there is at least one profile and that the active one exists.</summary>
+    public static void Ensure(Settings s)
+    {
+        if (s.Profiles.Count == 0) s.Profiles.Add(Capture(s, DefaultName));
+        var active = Find(s, s.ActiveProfile) ?? s.Profiles[0];
+        s.ActiveProfile = active.Name;
+    }
+
+    /// <summary>Writes the current setup into the active profile.</summary>
+    public static void Store(Settings s)
+    {
+        Ensure(s);
+        var p = Find(s, s.ActiveProfile)!;
+        var snap = Capture(s, p.Name);
+        p.Source = snap.Source;
+        p.Cadence = snap.Cadence;
+        p.Upscale = snap.Upscale;
+        p.FrameGen = snap.FrameGen;
+        p.Display = snap.Display;
+    }
+
+    /// <summary>Loads the profile's setup into the settings and makes it active.</summary>
     public static void Apply(Settings s, ProfileData p)
     {
+        s.Source = Clone(p.Source);
         s.Cadence = Clone(p.Cadence);
         s.Upscale = Clone(p.Upscale);
         s.FrameGen = Clone(p.FrameGen);
-        s.Display.Sync = p.Sync;
-        s.Display.Pacing = p.Pacing;
+        s.Display = Clone(p.Display);
         s.ActiveProfile = p.Name;
     }
 
     public static ProfileData Capture(Settings s, string name) => new()
     {
         Name = name,
+        Source = Clone(s.Source),
         Cadence = Clone(s.Cadence),
         Upscale = Clone(s.Upscale),
         FrameGen = Clone(s.FrameGen),
-        Sync = s.Display.Sync,
-        Pacing = s.Display.Pacing,
+        Display = Clone(s.Display),
     };
+
+    /// <summary>A name not taken yet: "Profile 2", "Profile 3", ...</summary>
+    public static string NextName(Settings s)
+    {
+        for (int i = 2; ; i++)
+        {
+            string name = $"Profile {i}";
+            if (Find(s, name) == null) return name;
+        }
+    }
 
     private static T Clone<T>(T value) =>
         System.Text.Json.JsonSerializer.Deserialize<T>(System.Text.Json.JsonSerializer.Serialize(value, Json.Options), Json.Options)!;

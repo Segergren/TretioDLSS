@@ -1,3 +1,5 @@
+import { ProfileMenu } from './ProfileMenu';
+
 export type Page = 'play' | 'settings' | 'diagnostics';
 
 const tabs: { id: Page; label: string }[] = [
@@ -8,7 +10,7 @@ const tabs: { id: Page; label: string }[] = [
 
 export function TopBar({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => void }) {
   return (
-    <header className="relative z-20 grid h-[76px] shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-4 px-9">
+    <header className="relative z-20 grid h-[76px] shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-4 pr-12 pl-9">
       <div className="flex items-center gap-2.5">
         <AppMark />
         <span className="font-display text-[1.375rem] leading-6 font-bold tracking-[0.02em] text-chalk">TretioDLSS</span>
@@ -33,7 +35,7 @@ export function TopBar({ page, onNavigate }: { page: Page; onNavigate: (p: Page)
         })}
       </nav>
 
-      <div aria-hidden />
+      <ProfileMenu />
     </header>
   );
 }

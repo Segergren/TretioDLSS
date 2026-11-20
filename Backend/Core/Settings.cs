@@ -15,7 +15,7 @@ public sealed class Settings
     public UiSettings Ui { get; set; } = new();
     public DiscordSettings Discord { get; set; } = new();
     public List<ProfileData> Profiles { get; set; } = new();
-    public string ActiveProfile { get; set; } = "30 to 60";
+    public string ActiveProfile { get; set; } = Core.Profiles.DefaultName;
 }
 
 public sealed class SourceSettings
@@ -150,13 +150,13 @@ public sealed class AdvancedSettings
     public string VfxRuntimePath { get; set; } = "";
 }
 
-/// <summary>Processing choices only. Device, monitor, audio and TV choices never belong to a profile.</summary>
+/// <summary>A named setup: source and format, processing and output. Audio, hotkeys and app options stay global.</summary>
 public sealed class ProfileData
 {
     public string Name { get; set; } = "";
+    public SourceSettings Source { get; set; } = new();
     public CadenceSettings Cadence { get; set; } = new();
     public UpscaleSettings Upscale { get; set; } = new();
     public FrameGenSettings FrameGen { get; set; } = new();
-    public string Sync { get; set; } = "auto";
-    public string Pacing { get; set; } = "auto";
+    public DisplaySettings Display { get; set; } = new();
 }

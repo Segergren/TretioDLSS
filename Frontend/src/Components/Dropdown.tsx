@@ -1,10 +1,12 @@
 import { ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, Download } from 'lucide-react';
+import { Check, ChevronDown, Download, type LucideIcon } from 'lucide-react';
 
 export interface DropdownOption<T extends string> {
   value: T;
   label: string;
   detail?: string;
+  /** Shown before the label, for menus that mix kinds of things (displays and TVs, cards and windows). */
+  icon?: LucideIcon;
   disabled?: boolean;
   reason?: string;
   /** A button inside the row, for example a download that makes a disabled option usable. */
@@ -50,7 +52,7 @@ export function Dropdown<T extends string>({
 }: Props<T>) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
-  const [dropUp, setDropUp] = useState(false);
+  const [maxHeight, setMaxHeight] = useState(340);
   const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const id = useId();
@@ -65,13 +67,12 @@ export function Dropdown<T extends string>({
     return () => window.removeEventListener('mousedown', onDown);
   }, [open]);
 
-  // Open upward when the real menu does not fit below the trigger but does fit above it.
+  // Always open downward; the list gets the room left below the trigger and scrolls beyond that.
   useLayoutEffect(() => {
     if (!open || !rootRef.current) return;
     const rect = rootRef.current.getBoundingClientRect();
-    const listHeight = listRef.current?.offsetHeight ?? Math.min(options.length * 60 + 12, 340);
-    setDropUp(window.innerHeight - rect.bottom < listHeight + 16 && rect.top > listHeight + 16);
-  }, [open, options.length]);
+    setMaxHeight(Math.max(120, window.innerHeight - rect.bottom - 16));
+  }, [open]);
 
   const choose = (opt: DropdownOption<T>) => {
     if (opt.disabled) return;
@@ -146,10 +147,10 @@ export function Dropdown<T extends string>({
           ref={listRef}
           id={id}
           role="listbox"
-          className={`absolute z-50 max-h-[340px] min-w-full overflow-y-auto rounded-2xl border border-edge bg-boulevard p-1.5 ${
-            dropUp ? 'menu-drop bottom-full mb-1.5' : 'menu-rise top-full mt-1.5'
-          } ${align === 'right' ? 'right-0' : 'left-0'}`}
-          style={{ width: 'max-content', maxWidth: 400 }}
+          className={`menu-rise absolute top-full z-50 mt-1.5 min-w-full overflow-y-auto rounded-2xl border border-edge bg-boulevard p-1.5 ${
+            align === 'right' ? 'right-0' : 'left-0'
+          }`}
+          style={{ width: 'max-content', maxWidth: 'min(400px, calc(100vw - 32px))', maxHeight }}
         >
           {options.map((opt, i) => {
             const isSel = opt.value === value;
@@ -166,9 +167,19 @@ export function Dropdown<T extends string>({
                   opt.disabled ? 'cursor-not-allowed' : 'cursor-pointer'
                 } ${i === active && (!opt.disabled || opt.action) ? 'bg-marquee' : ''}`}
               >
-                <span className="flex h-5 w-4 shrink-0 items-center justify-center">
-                  {isSel && <Check size={16} className="text-flamingo" aria-hidden />}
-                </span>
+                {opt.icon ? (
+                  <span className="flex h-5 w-[18px] shrink-0 items-center justify-center">
+                    {isSel ? (
+                      <Check size={18} className="text-flamingo" aria-hidden />
+                    ) : (
+                      <opt.icon size={18} className={opt.disabled ? 'text-dusk/50' : 'text-dusk'} aria-hidden />
+                    )}
+                  </span>
+                ) : (
+                  <span className="flex h-5 w-4 shrink-0 items-center justify-center">
+                    {isSel && <Check size={16} className="text-flamingo" aria-hidden />}
+                  </span>
+                )}
                 <span className="min-w-0 flex-1">
                   <span
                     className={`block text-[0.9375rem] leading-5 ${opt.disabled ? 'text-haze/50' : isSel ? 'text-chalk' : 'text-haze'}`}

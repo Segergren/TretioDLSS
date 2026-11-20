@@ -1,4 +1,5 @@
 import { DropdownOption } from '../Components/Dropdown';
+import { AppWindow, FileVideo, Grid3x3, Monitor, Tv, Video, type LucideIcon } from 'lucide-react';
 import { AppState, CaptureFormat, EngineInfo, MonitorInfo } from '../Models/types';
 
 /** Multiplier picker in each frame generation row: the current engine and multiplier, and how to pick one. */
@@ -60,6 +61,23 @@ export function monitorLabel(m: MonitorInfo): string {
   return m.name;
 }
 
+/** Displays plus the TVs found on the network; a TV is reached through Moonlight. */
+export function outputChoices(state: AppState): DropdownOption<string>[] {
+  const monitors = state.monitors.map((m) => ({ value: m.id, label: m.name, detail: monitorDetail(m), icon: m.tv ? Tv : Monitor }));
+  const tvs = state.tvs.map((t) => ({ value: t.id, label: t.name, detail: 'TV on the network, through Moonlight', icon: Tv }));
+  return [...monitors, ...tvs];
+}
+
+export function isTvOutput(state: AppState): boolean {
+  return state.settings.display.monitorId.startsWith('tv:');
+}
+
+export function outputName(state: AppState): string {
+  const id = state.settings.display.monitorId;
+  if (id.startsWith('tv:')) return state.tvs.find((t) => t.id === id)?.name ?? 'TV';
+  return (state.monitors.find((m) => m.id === id) ?? state.monitors.find((m) => m.primary))?.name ?? 'No display';
+}
+
 export function monitorDetail(m: MonitorInfo, withPrimary = true): string {
   const parts = [`${m.width} x ${m.height}`, `${formatHz(m.refresh)} Hz`];
   if (m.vrr) parts.push('VRR');
@@ -69,28 +87,28 @@ export function monitorDetail(m: MonitorInfo, withPrimary = true): string {
   return parts.join(', ');
 }
 
-
 export interface SourceChoice {
   value: string;
   label: string;
   detail: string;
+  icon?: LucideIcon;
 }
 
 /** Every pickable source as one flat list: capture devices, windows, test pattern, file. */
 export function sourceChoices(state: AppState): SourceChoice[] {
   const list: SourceChoice[] = [];
   for (const d of state.devices) {
-    list.push({ value: `uvc:${d.id}`, label: d.name, detail: 'Capture card' });
+    list.push({ value: `uvc:${d.id}`, label: d.name, detail: 'Capture card', icon: Video });
   }
   const seen = new Set<string>();
   for (const w of state.windows) {
     const value = `window:${w.process}|${w.title}`;
     if (seen.has(value)) continue;
     seen.add(value);
-    list.push({ value, label: w.title, detail: `Window, ${w.process}` });
+    list.push({ value, label: w.title, detail: `Window, ${w.process}`, icon: AppWindow });
   }
-  list.push({ value: 'pattern', label: 'Test pattern', detail: 'Generated, for checks without a console' });
-  list.push({ value: 'file', label: 'Video file', detail: 'Plays a local clip as if it were live' });
+  list.push({ value: 'pattern', label: 'Test pattern', detail: 'Generated, for checks without a console', icon: Grid3x3 });
+  list.push({ value: 'file', label: 'Video file', detail: 'Plays a local clip as if it were live', icon: FileVideo });
   return list;
 }
 

@@ -27,6 +27,9 @@ public sealed record PipelineConfig
     public bool Overlay { get; init; }
     public string Adapter { get; init; } = "auto";
 
+    /// <summary>A custom output, for example the TV stream; takes precedence over Monitor.</summary>
+    public Func<Graphics.GraphicsDevice, OutputSink>? SinkFactory { get; init; }
+
     /// <summary>Null means headless: an offscreen sink of this size.</summary>
     public Platform.MonitorInfo? Monitor { get; init; }
     public bool Borderless { get; init; } = true;

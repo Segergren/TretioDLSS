@@ -45,6 +45,7 @@ public sealed class SettingsService
             if (!File.Exists(_path))
             {
                 Current = new Settings();
+                Profiles.Ensure(Current);
                 return false;
             }
             try
@@ -89,6 +90,7 @@ public sealed class SettingsService
         h.Brightness = Math.Clamp(h.Brightness, -0.2, 0.2);
         h.Contrast = Math.Clamp(h.Contrast, 0.8, 1.2);
         h.Saturation = Math.Clamp(h.Saturation, 0.8, 1.4);
+        Profiles.Store(s);
     }
 
     public void Save()
@@ -97,6 +99,7 @@ public sealed class SettingsService
         {
             _saveTimer?.Dispose();
             _saveTimer = null;
+            Profiles.Store(Current);
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
             var tmp = _path + ".tmp";
             File.WriteAllText(tmp, JsonSerializer.Serialize(Current, Json.Options));

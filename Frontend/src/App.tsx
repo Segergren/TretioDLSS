@@ -35,7 +35,7 @@ export function App() {
           setPage(p);
         }}
       />
-      <main className="relative z-10 min-h-0 flex-1 overflow-y-auto">
+      <main className="relative z-10 min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         {!state ? (
           <div className="flex h-full items-center justify-center gap-3 text-dusk">
             <Spinner />

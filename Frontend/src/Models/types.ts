@@ -114,6 +114,33 @@ export interface MonitorInfo {
   adapter: string;
 }
 
+export interface TvInfo {
+  id: string;
+  name: string;
+  model: string;
+  address: string;
+  webOs: boolean;
+}
+
+export interface StreamState {
+  running: boolean;
+  port?: number | null;
+  /** LAN address and port to type into Moonlight's add-PC dialog. */
+  address?: string | null;
+  error?: string | null;
+  waitingPin?: string | null;
+  clients: string[];
+  session?: {
+    client: string;
+    address: string;
+    width?: number | null;
+    height?: number | null;
+    fps?: number | null;
+    codec?: string | null;
+    bitrateKbps?: number | null;
+  } | null;
+}
+
 export interface AudioDevice {
   id: string;
   name: string;
@@ -122,7 +149,6 @@ export interface AudioDevice {
 
 export interface Profile {
   name: string;
-  builtIn: boolean;
   summary: string;
 }
 
@@ -140,6 +166,8 @@ export interface AppState {
   devices: CaptureDevice[];
   windows: CaptureWindow[];
   monitors: MonitorInfo[];
+  tvs: TvInfo[];
+  stream: StreamState;
   audioInputs: AudioDevice[];
   audioOutputs: AudioDevice[];
   upscalers: EngineInfo[];

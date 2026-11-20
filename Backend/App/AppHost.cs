@@ -11,6 +11,7 @@ using TretioDLSS.Nvidia;
 using TretioDLSS.Output;
 using TretioDLSS.Pipeline;
 using TretioDLSS.Platform;
+using TretioDLSS.Streaming;
 
 namespace TretioDLSS.App;
 
@@ -41,6 +42,9 @@ public sealed class AppHost : IDisposable
     private PipelineStatus _lastStatus = PipelineStatus.Idle;
     private string? _lastPipelineMessage;
     private int _blackFrames;
+    private readonly GameStreamHost _stream = new();
+    private List<TvInfo> _tvs = TvDiscovery.LoadCache();
+    private volatile bool _tvWaiting;
 
     public sealed record HintAction(string Label, string Method, object? Parameters = null);
     public sealed record Hint(string Id, string Level, string Text, HintAction? Action = null);
@@ -55,12 +59,17 @@ public sealed class AppHost : IDisposable
         Messages.Connected += () => { };
         Settings.Changed += OnSettingsChanged;
         _discord.StatusChanged += PushState;
+        _stream.StartPipeline = StartStreamPipeline;
+        _stream.StopPipeline = () => StopPipeline(fromStream: true);
+        _stream.Changed += PushState;
     }
 
     public void Start()
     {
         VfxRuntime.ConfiguredPath = Settings.Current.Advanced.VfxRuntimePath;
         RefreshDevices(quiet: true);
+        UpdateStreamHost(Settings.Current);
+        Task.Run(ScanTvs);
         Task.Run(async () =>
         {
             Caps = Capabilities.Detect();
@@ -241,6 +250,18 @@ public sealed class AppHost : IDisposable
                 case "StopPipeline":
                     StopPipeline();
                     break;
+                case "ScanTvs":
+                    Task.Run(ScanTvs);
+                    break;
+                case "SubmitPin":
+                    _stream.SubmitPin(p.TryGetProperty("pin", out var pin) ? pin.GetString() : null);
+                    break;
+                case "CancelPin":
+                    _stream.SubmitPin(null);
+                    break;
+                case "UnpairClient":
+                    _stream.Unpair(p.GetProperty("name").GetString() ?? "");
+                    break;
                 case "RefreshDevices":
                     RefreshDevices();
                     Toast("info", "Devices refreshed");
@@ -259,15 +280,27 @@ public sealed class AppHost : IDisposable
                 case "SelectProfile":
                     SelectProfile(p.GetProperty("name").GetString() ?? "");
                     break;
-                case "SaveProfile":
-                {
-                    string name = p.GetProperty("name").GetString() ?? "";
-                    if (string.IsNullOrWhiteSpace(name) || Profiles.BuiltIns.Any(b => b.Name == name)) break;
+                case "NewProfile":
                     Settings.Mutate(s =>
                     {
-                        s.Profiles.RemoveAll(x => x.Name == name);
+                        string name = Profiles.NextName(s);
                         s.Profiles.Add(Profiles.Capture(s, name));
                         s.ActiveProfile = name;
+                    });
+                    PushState();
+                    break;
+                case "RenameProfile":
+                {
+                    string from = p.GetProperty("name").GetString() ?? "";
+                    string to = (p.GetProperty("to").GetString() ?? "").Trim();
+                    var s0 = Settings.Current;
+                    var profile = Profiles.Find(s0, from);
+                    var clash = Profiles.Find(s0, to);
+                    if (profile == null || to.Length == 0 || to.Length > 40 || (clash != null && clash != profile)) break;
+                    Settings.Mutate(s =>
+                    {
+                        if (string.Equals(s.ActiveProfile, profile.Name, StringComparison.OrdinalIgnoreCase)) s.ActiveProfile = to;
+                        profile.Name = to;
                     });
                     PushState();
                     break;
@@ -275,7 +308,14 @@ public sealed class AppHost : IDisposable
                 case "DeleteProfile":
                 {
                     string name = p.GetProperty("name").GetString() ?? "";
-                    Settings.Mutate(s => s.Profiles.RemoveAll(x => x.Name == name));
+                    if (Settings.Current.Profiles.Count <= 1) break;
+                    bool wasActive = string.Equals(Settings.Current.ActiveProfile, name, StringComparison.OrdinalIgnoreCase);
+                    if (wasActive)
+                    {
+                        var next = Settings.Current.Profiles.First(x => !string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+                        SelectProfile(next.Name);
+                    }
+                    Settings.Mutate(s => s.Profiles.RemoveAll(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)));
                     PushState();
                     break;
                 }
@@ -350,6 +390,7 @@ public sealed class AppHost : IDisposable
             p.SetWindowTitle(string.IsNullOrWhiteSpace(s.Display.WindowTitle) ? "TretioDLSS output" : s.Display.WindowTitle.Trim());
         }
         _audio.SetVolume(s.Audio.Volume);
+        UpdateStreamHost(s);
         RegisterHotkeys();
         _discord.Update(s.Discord, _pipeline != null);
     }
@@ -357,7 +398,7 @@ public sealed class AppHost : IDisposable
     private void SelectProfile(string name)
     {
         var profile = Profiles.Find(Settings.Current, name);
-        if (profile == null) return;
+        if (profile == null || profile.Name == Settings.Current.ActiveProfile) return;
         Settings.Mutate(s => Profiles.Apply(s, profile));
         PushState();
         if (_pipeline != null) RestartPipeline();
@@ -396,6 +437,11 @@ public sealed class AppHost : IDisposable
         {
             if (_pipeline != null) return;
             var s = Settings.Current;
+            if (IsTvOutput(s))
+            {
+                WaitForTv(s);
+                return;
+            }
             PipelineConfig cfg;
             try
             {
@@ -474,20 +520,132 @@ public sealed class AppHost : IDisposable
 
     public bool PipelineRunning => _pipeline != null;
 
+    // ---- TV output (built-in GameStream host) ----
+
+    private static bool IsTvOutput(Settings s) => s.Display.MonitorId.StartsWith("tv:", StringComparison.Ordinal);
+
+    private TvInfo? SelectedTv(Settings s) => _tvs.FirstOrDefault(t => "tv:" + t.Id == s.Display.MonitorId);
+
+    private void UpdateStreamHost(Settings s)
+    {
+        bool want = IsTvOutput(s);
+        if (want && !_stream.Running) _stream.Start();
+        else if (!want && _stream.Running) Task.Run(_stream.Stop);
+    }
+
+    private async Task ScanTvs()
+    {
+        try
+        {
+            var found = await TvDiscovery.ScanAsync();
+            // A TV that is off right now stays listed, so a picked TV never turns into an unknown entry.
+            var merged = found.Concat(_tvs.Where(old => found.All(f => f.Id != old.Id))).ToList();
+            _tvs = merged;
+            TvDiscovery.SaveCache(merged);
+            PushState();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "TV scan failed");
+        }
+    }
+
+    /// <summary>Start with a TV picked: the host waits for Moonlight; the pipeline starts when the TV launches the app.</summary>
+    private void WaitForTv(Settings s)
+    {
+        UpdateStreamHost(s);
+        if (_stream.Error != null)
+        {
+            _hints["tvwait"] = new Hint("tvwait", "error", "The TV stream could not start: " + _stream.Error);
+            PushState();
+            return;
+        }
+        _tvWaiting = true;
+        Log.Information("Waiting for Moonlight on {Tv}", SelectedTv(s)?.Name ?? "the TV");
+        PushState();
+    }
+
+    private void StartStreamPipeline(StreamSession session)
+    {
+        lock (_pipelineGate)
+        {
+            if (_pipeline != null) StopPipeline(fromStream: true);
+            var s = Settings.Current;
+            var f = session.Format!;
+            PipelineConfig cfg;
+            try
+            {
+                cfg = BuildConfig(s, _stream.CreateSink);
+            }
+            catch (Exception ex)
+            {
+                Toast("error", ex.Message);
+                Task.Run(() => _stream.EndSession("The pipeline could not be configured: " + ex.Message, true));
+                return;
+            }
+            var host = new PipelineHost(cfg);
+            host.StatusChanged += () =>
+            {
+                if (host.Status == PipelineStatus.Idle && _pipeline == host) Task.Run(() => StopPipeline());
+                PushState();
+            };
+            host.Preview += jpeg => _ = Messages.Send("Preview", Convert.ToBase64String(jpeg));
+            host.SetPreviewFps(_previewActive ? 30 : 0);
+            _pipeline = host;
+            _lastSource = _lastReal = _lastPresented = 0;
+            _rateWindow.Clear();
+            _histReal.Clear();
+            _histGen.Clear();
+            _blackFrames = 0;
+            _hints.Remove("tvwait");
+            _tvWaiting = false;
+            Log.Information("Stream pipeline for {Client}: {W}x{H}@{Fps}", session.Launch.ClientName, f.Width, f.Height, f.Fps);
+            try
+            {
+                host.Start();
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Stream pipeline did not start");
+                _pipeline = null;
+                host.Dispose();
+                _lastPipelineMessage = ex.Message;
+                Toast("error", "Could not start the TV stream: " + ex.Message);
+                Task.Run(() => _stream.EndSession("The pipeline did not start", true));
+                return;
+            }
+            StartAudio(s);
+            _audio.Tap = _stream.OnAudio;
+            _audio.MuteLocal = !session.Launch.HostAudio;
+        }
+        PushState();
+    }
+
     private static HdrConfig HdrLook(Settings s)
     {
         var h = s.Display.Hdr;
         return new HdrConfig(h.PaperWhite, h.Expand, h.Brightness, h.Contrast, h.Saturation);
     }
 
-    public void StopPipeline()
+    public void StopPipeline() => StopPipeline(fromStream: false);
+
+    private void StopPipeline(bool fromStream)
     {
+        if (!fromStream && _stream.Session != null)
+        {
+            _stream.EndSession("Stopped in TretioDLSS", true);
+            return;
+        }
+        _hints.Remove("tvwait");
+        _tvWaiting = false;
         PipelineHost? p;
         lock (_pipelineGate)
         {
             p = _pipeline;
             _pipeline = null;
         }
+        _audio.Tap = null;
+        _audio.MuteLocal = false;
         _audio.Stop();
         if (p != null)
         {
@@ -501,19 +659,25 @@ public sealed class AppHost : IDisposable
 
     private void RestartPipeline()
     {
+        if (_stream.Session is { Format: not null } session)
+        {
+            StopPipeline(fromStream: true);
+            StartStreamPipeline(session);
+            return;
+        }
         StopPipeline();
         StartPipeline();
     }
 
     public void TogglePipeline()
     {
-        if (_pipeline != null) StopPipeline();
+        if (_pipeline != null || _tvWaiting) StopPipeline();
         else StartPipeline();
     }
 
-    private PipelineConfig BuildConfig(Settings s)
+    private PipelineConfig BuildConfig(Settings s, Func<Graphics.GraphicsDevice, OutputSink>? sinkFactory = null)
     {
-        var monitor = Monitors.Find(_monitors, s.Display.MonitorId) ?? throw new InvalidOperationException("No display found");
+        var monitor = sinkFactory != null ? null : Monitors.Find(_monitors, s.Display.MonitorId) ?? throw new InvalidOperationException("No display found");
         var source = SourceFactory.FromSettings(s.Source, _devices);
         string fg = s.FrameGen.Engine;
         var sync = s.Display.Sync switch
@@ -521,13 +685,13 @@ public sealed class AppHost : IDisposable
             "vsync" => SyncMode.Vsync,
             "tearing" => SyncMode.Tearing,
             "vrr" => SyncMode.Vrr,
-            _ => monitor.Vrr && Caps.Tearing ? SyncMode.Vrr : SyncMode.Vsync,
+            _ => monitor?.Vrr == true && Caps.Tearing ? SyncMode.Vrr : SyncMode.Vsync,
         };
         var pacing = s.Display.Pacing switch
         {
             "clocked" => PacingMode.Clocked,
             "immediate" => PacingMode.Immediate,
-            _ => PacingMode.Immediate,
+            _ => sinkFactory != null ? PacingMode.Clocked : PacingMode.Immediate,
         };
         return new PipelineConfig
         {
@@ -547,11 +711,12 @@ public sealed class AppHost : IDisposable
             Overlay = s.Display.Overlay,
             Adapter = s.Advanced.Adapter,
             Monitor = monitor,
+            SinkFactory = sinkFactory,
             Borderless = s.Display.Mode != "windowed",
             NoActivate = s.Source.Kind == "window",
             WindowTitle = string.IsNullOrWhiteSpace(s.Display.WindowTitle) ? "TretioDLSS output" : s.Display.WindowTitle.Trim(),
             TrimBlackBars = s.Source.Kind == "window",
-            Hdr = s.Display.Hdr.Mode == "off" ? null : HdrLook(s),
+            Hdr = s.Display.Hdr.Mode == "off" || sinkFactory != null ? null : HdrLook(s),
             LossySource = s.Source.Kind == "window" || s.Source.Subtype == "MJPG",
         };
     }
@@ -713,7 +878,7 @@ public sealed class AppHost : IDisposable
     {
         var s = Settings.Current;
         var p = _pipeline;
-        string status = p == null ? "idle" : p.Status switch
+        string status = p == null ? (_tvWaiting ? "waiting" : "idle") : p.Status switch
         {
             PipelineStatus.Starting => "starting",
             PipelineStatus.Running => "running",
@@ -735,7 +900,7 @@ public sealed class AppHost : IDisposable
         {
             version = AppInfo.Version,
             settings = s,
-            profiles = Profiles.List(s).Select(x => new { name = x.Name, builtIn = x.BuiltIn, summary = x.Summary }),
+            profiles = Profiles.List(s).Select(x => new { name = x.Name, summary = x.Summary }),
             devices = _devices.Select(d => new
             {
                 id = d.Id,
@@ -748,10 +913,30 @@ public sealed class AppHost : IDisposable
             audioOutputs = _audioOut.Select(a => new { id = a.Id, name = a.Name, isDefault = a.IsDefault }),
             upscalers = EngineCatalog.Upscalers(Caps),
             frameGenerators = EngineCatalog.FrameGenerators(Caps),
-            pipeline = new { status, message = p?.StatusMessage },
+            pipeline = new { status, message = p == null && _tvWaiting ? "Waiting for the TV" : p?.StatusMessage },
             gpuName = Caps.GpuName,
             update = new { status = Updates.Status, ready = Updates.PendingVersion },
             discordStatus = _discord.Status,
+            tvs = _tvs.Select(t => new { id = "tv:" + t.Id, name = t.Name, model = t.Model, address = t.Address, webOs = t.WebOs }),
+            stream = new
+            {
+                running = _stream.Running,
+                port = _stream.Ports?.Http,
+                address = _stream.Ports == null ? null : $"{TvDiscovery.LanAddresses().FirstOrDefault()}:{_stream.Ports.Http}",
+                error = _stream.Error,
+                waitingPin = _stream.WaitingForPinFrom,
+                clients = _stream.Clients.Select(c => c.Name),
+                session = _stream.Session is { } ss ? new
+                {
+                    client = ss.Launch.ClientName,
+                    address = ss.Launch.RemoteAddress,
+                    width = ss.Format?.Width,
+                    height = ss.Format?.Height,
+                    fps = ss.Format?.Fps,
+                    codec = ss.Format?.Codec switch { 1 => "HEVC", 2 => "AV1", 0 => "H.264", _ => null },
+                    bitrateKbps = ss.Format?.BitrateKbps,
+                } : null,
+            },
             hints = hints.Select(h => new { id = h.Id, level = h.Level, text = h.Text, action = h.Action == null ? null : new { label = h.Action.Label, method = h.Action.Method, parameters = h.Action.Parameters } }),
         };
     }
@@ -840,6 +1025,7 @@ public sealed class AppHost : IDisposable
         _statsTimer?.Dispose();
         _hotkeys?.Dispose();
         StopPipeline();
+        _stream.Dispose();
         _audio.Dispose();
         _discord.Dispose();
         Updates.ApplyOnExit();

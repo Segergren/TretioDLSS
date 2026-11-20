@@ -5,7 +5,7 @@ import { Button } from '../Components/Button';
 import { Dropdown } from '../Components/Dropdown';
 import { OptionRow, Panel, Slider, TextInput, Toggle } from '../Components/Controls';
 import { useStore } from '../lib/store';
-import { engineOptions, formatLabel, monitorDetail } from '../lib/options';
+import { engineOptions, formatLabel, outputChoices } from '../lib/options';
 
 const sections = [
   { id: 'source', label: 'Source' },
@@ -287,7 +287,7 @@ export function SettingsPage({ section }: { section: string | null }) {
               align="right"
               value={s.display.monitorId}
               disabled={live}
-              options={state.monitors.map((m) => ({ value: m.id, label: m.name, detail: monitorDetail(m) }))}
+              options={outputChoices(state)}
               onChange={(monitorId) => update({ display: { monitorId } })}
             />
           </OptionRow>

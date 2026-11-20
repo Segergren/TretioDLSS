@@ -71,33 +71,63 @@ public class SettingsTests
     }
 
     [Fact]
-    public void ProfilesChangeProcessingNotHardware()
+    public void ChangesAreStoredIntoTheActiveProfile()
     {
-        var s = new Settings();
-        s.Source.DeviceId = "card";
-        s.Display.MonitorId = "tv";
-        s.Audio.InputId = "mic";
-        s.Tv.Mode = "sunshine";
-        var p = Profiles.Find(s, "Lowest delay")!;
-        Profiles.Apply(s, p);
-        Assert.Equal("fsr1", s.Upscale.Engine);
-        Assert.Equal("off", s.FrameGen.Engine);
-        Assert.Equal("immediate", s.Display.Pacing);
-        Assert.Equal("card", s.Source.DeviceId);
-        Assert.Equal("tv", s.Display.MonitorId);
-        Assert.Equal("mic", s.Audio.InputId);
-        Assert.Equal("sunshine", s.Tv.Mode);
-        Assert.Equal("Lowest delay", s.ActiveProfile);
+        var svc = new SettingsService(TempFile());
+        svc.Load();
+        Assert.Equal(Profiles.DefaultName, Assert.Single(svc.Current.Profiles).Name);
+        svc.Mutate(s =>
+        {
+            s.Source.Width = 3840;
+            s.Display.MonitorId = "tv";
+            s.FrameGen.Engine = "dlss-fg";
+        });
+        var p = Profiles.Find(svc.Current, Profiles.DefaultName)!;
+        Assert.Equal(3840, p.Source.Width);
+        Assert.Equal("tv", p.Display.MonitorId);
+        Assert.Equal("dlss-fg", p.FrameGen.Engine);
     }
 
     [Fact]
-    public void CustomProfileCapturesAndListsIt()
+    public void SwitchingProfilesRestoresTheWholeSetupButNotAudio()
     {
-        var s = new Settings();
-        s.Upscale.Engine = "nis";
-        s.Profiles.Add(Profiles.Capture(s, "Mine"));
-        Assert.Contains(Profiles.List(s), p => p.Name == "Mine" && !p.BuiltIn && p.Summary.Contains("NIS"));
-        Assert.Equal(4, Profiles.List(s).Count());
+        var svc = new SettingsService(TempFile());
+        svc.Load();
+        svc.Mutate(s => { s.Source.Height = 1440; s.Display.MonitorId = "mon"; s.Audio.InputId = "mic"; });
+        svc.Mutate(s =>
+        {
+            string name = Profiles.NextName(s);
+            s.Profiles.Add(Profiles.Capture(s, name));
+            s.ActiveProfile = name;
+        });
+        Assert.Equal("Profile 2", svc.Current.ActiveProfile);
+        svc.Mutate(s => { s.Source.Height = 2160; s.Display.MonitorId = "tv"; s.Audio.InputId = "other"; });
+
+        svc.Mutate(s => Profiles.Apply(s, Profiles.Find(s, Profiles.DefaultName)!));
+        Assert.Equal(1440, svc.Current.Source.Height);
+        Assert.Equal("mon", svc.Current.Display.MonitorId);
+        Assert.Equal("other", svc.Current.Audio.InputId);
+        Assert.Equal(2160, Profiles.Find(svc.Current, "Profile 2")!.Source.Height);
+        Assert.Contains("2160p", Profiles.Summary(Profiles.Find(svc.Current, "Profile 2")!));
+    }
+
+    [Fact]
+    public void ActiveProfileSurvivesARestart()
+    {
+        string file = TempFile();
+        var svc = new SettingsService(file);
+        svc.Load();
+        svc.Mutate(s =>
+        {
+            s.Profiles.Add(Profiles.Capture(s, "TV 4K"));
+            s.ActiveProfile = "TV 4K";
+            s.Source.Width = 3840;
+        });
+        svc.Save();
+        var again = new SettingsService(file);
+        again.Load();
+        Assert.Equal("TV 4K", again.Current.ActiveProfile);
+        Assert.Equal(3840, again.Current.Source.Width);
     }
 }
 
@@ -360,7 +390,7 @@ public class SafeModeTests
         var dlss = Assert.Single(EngineCatalog.FrameGenerators(new Capabilities { Nvidia = true }), e => e.Id == "dlss-fg");
         Assert.False(dlss.Available);
         Assert.Equal([2, 3, 4], dlss.Multipliers);
-        Assert.Equal("DLSS Frame Generation x4", Profiles.Summary(new ProfileData { FrameGen = new FrameGenSettings { Engine = "dlss-fg", Multiplier = 4 } }).Split(',')[0]);
+        Assert.Contains("DLSS FG x4", Profiles.Summary(new ProfileData { FrameGen = new FrameGenSettings { Engine = "dlss-fg", Multiplier = 4 } }));
     }
 
     [Fact]
