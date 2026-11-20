@@ -32,7 +32,7 @@ Set-Location $root
 $publish = Join-Path $root "publish\$Version"
 if (Test-Path $publish) { Remove-Item -Recurse -Force $publish }
 
-& (Join-Path $PSScriptRoot "dlssetch.ps1")
+& (Join-Path $PSScriptRoot "dlss\fetch.ps1")
 
 dotnet publish TretioDLSS.csproj -c Release -r win-x64 --self-contained true -p:Version=$Version -o $publish
 if ($LASTEXITCODE -ne 0) { throw "publish failed" }
