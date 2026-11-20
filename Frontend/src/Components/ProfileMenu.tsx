@@ -47,7 +47,7 @@ export function ProfileMenu() {
   }
 
   return (
-    <div ref={rootRef} className="relative justify-self-end">
+    <div ref={rootRef} className="relative">
       <button
         type="button"
         aria-haspopup="menu"

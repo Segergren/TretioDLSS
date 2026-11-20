@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TopBar, Page } from './Components/TopBar';
 import { Toasts } from './Components/Toasts';
+import { ReleaseNotesDialog } from './Components/ReleaseNotesDialog';
 import { PlayPage } from './Pages/PlayPage';
 import { SettingsPage } from './Pages/SettingsPage';
 import { DiagnosticsPage } from './Pages/DiagnosticsPage';
@@ -50,6 +51,7 @@ export function App() {
         )}
       </main>
       <Toasts />
+      <ReleaseNotesDialog />
     </div>
   );
 }

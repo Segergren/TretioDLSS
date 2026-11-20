@@ -89,6 +89,16 @@ const state = {
     { id: 'mon1', name: 'Odyssey G60SD', width: 2560, height: 1440, refresh: 360, vrr: true, hdr: false, primary: true, tv: false, adapter: 'NVIDIA GeForce RTX 4090' },
     { id: 'mon2', name: 'LG ULTRAGEAR', width: 2560, height: 1440, refresh: 144, vrr: true, hdr: false, primary: false, tv: false, adapter: 'NVIDIA GeForce RTX 4090' },
   ],
+  update: { status: '', ready: scenario === 'update' ? '0.7.0' : null },
+  releaseNotes:
+    scenario === 'notes'
+      ? [
+          { version: '0.7.0', notes: `* **TV:** Added streaming to the TV through Moonlight, with the TV picked by name under Output.
+* **Interface:** Added profiles in the top bar.
+* **TV:** Fixed the picture stopping after about 15 seconds at 4K 120 fps.` },
+          { version: '0.6.2', notes: '* **Capture:** Fixed the picture staying black when the console was turned on after Start.' },
+        ]
+      : [],
   tvs: [{ id: 'tv:uuid:lg-g2', name: 'LG OLED55G26LA', model: 'OLED55G26LA', address: '192.168.1.30', webOs: true }],
   stream:
     scenario === 'tv'
@@ -241,6 +251,10 @@ wss.on('connection', (ws, req) => {
       case 'SubmitPin':
       case 'CancelPin':
         state.stream.waitingPin = null;
+        broadcast('State', state);
+        break;
+      case 'DismissReleaseNotes':
+        state.releaseNotes = [];
         broadcast('State', state);
         break;
       case 'ScanTvs':

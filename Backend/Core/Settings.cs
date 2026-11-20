@@ -141,6 +141,9 @@ public sealed class UiSettings
 {
     /// <summary>The close button hides the window to the tray instead of exiting.</summary>
     public bool CloseToTray { get; set; }
+
+    /// <summary>The version that ran last; a newer one shows its release notes once.</summary>
+    public string LastVersion { get; set; } = "";
 }
 
 public sealed class AdvancedSettings

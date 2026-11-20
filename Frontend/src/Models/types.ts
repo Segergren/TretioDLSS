@@ -51,7 +51,7 @@ export interface Settings {
     exitFullscreen: string;
   };
   advanced: { adapter: string; logLevel: string; vfxRuntimePath: string };
-  ui: { closeToTray: boolean };
+  ui: { closeToTray: boolean; lastVersion: string };
   discord: { enabled: boolean; game: string; startTime: string };
   activeProfile: string;
 }
@@ -175,6 +175,7 @@ export interface AppState {
   pipeline: PipelineState;
   gpuName: string;
   update?: { status: string; ready: string | null };
+  releaseNotes?: { version: string; notes: string }[];
   discordStatus?: string;
   hints: Hint[];
 }

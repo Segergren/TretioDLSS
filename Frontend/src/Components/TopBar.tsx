@@ -1,4 +1,5 @@
 import { ProfileMenu } from './ProfileMenu';
+import { UpdateButton } from './UpdateButton';
 
 export type Page = 'play' | 'settings' | 'diagnostics';
 
@@ -35,7 +36,10 @@ export function TopBar({ page, onNavigate }: { page: Page; onNavigate: (p: Page)
         })}
       </nav>
 
-      <ProfileMenu />
+      <div className="flex items-center justify-end gap-2.5">
+        <UpdateButton />
+        <ProfileMenu />
+      </div>
     </header>
   );
 }

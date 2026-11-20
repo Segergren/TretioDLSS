@@ -45,6 +45,7 @@ public sealed class AppHost : IDisposable
     private readonly GameStreamHost _stream = new();
     private List<TvInfo> _tvs = TvDiscovery.LoadCache();
     private volatile bool _tvWaiting;
+    private List<ReleaseNote> _releaseNotes = new();
 
     public sealed record HintAction(string Label, string Method, object? Parameters = null);
     public sealed record Hint(string Id, string Level, string Text, HintAction? Action = null);
@@ -82,6 +83,7 @@ public sealed class AppHost : IDisposable
             await Updates.CheckAsync();
             PushState();
         });
+        Task.Run(ShowReleaseNotesIfUpdated);
         _statsTimer = new Timer(_ => PushStats(), null, 250, 250);
         try
         {
@@ -249,6 +251,11 @@ public sealed class AppHost : IDisposable
                 }
                 case "StopPipeline":
                     StopPipeline();
+                    break;
+                case "DismissReleaseNotes":
+                    _releaseNotes = new();
+                    Settings.Mutate(s => s.Ui.LastVersion = AppInfo.Version);
+                    PushState();
                     break;
                 case "ScanTvs":
                     Task.Run(ScanTvs);
@@ -519,6 +526,29 @@ public sealed class AppHost : IDisposable
     }
 
     public bool PipelineRunning => _pipeline != null;
+
+    /// <summary>First start after an update: the notes of every release since the last version that ran, once.</summary>
+    private async Task ShowReleaseNotesIfUpdated()
+    {
+        if (!Version.TryParse(AppInfo.Version, out var current)) return;
+        string last = Settings.Current.Ui.LastVersion;
+        if (!Version.TryParse(last, out var previous))
+        {
+            Settings.Mutate(s => s.Ui.LastVersion = AppInfo.Version);
+            return;
+        }
+        if (current <= previous) return;
+        var notes = await ReleaseNotes.FetchAsync(previous, current);
+        if (notes == null) return;
+        if (notes.Count == 0)
+        {
+            Settings.Mutate(s => s.Ui.LastVersion = AppInfo.Version);
+            return;
+        }
+        Log.Information("Showing release notes for {Versions}", string.Join(", ", notes.Select(n => n.Version)));
+        _releaseNotes = notes;
+        PushState();
+    }
 
     // ---- TV output (built-in GameStream host) ----
 
@@ -917,6 +947,7 @@ public sealed class AppHost : IDisposable
             gpuName = Caps.GpuName,
             update = new { status = Updates.Status, ready = Updates.PendingVersion },
             discordStatus = _discord.Status,
+            releaseNotes = _releaseNotes.Select(n => new { version = n.Version, notes = n.Notes }),
             tvs = _tvs.Select(t => new { id = "tv:" + t.Id, name = t.Name, model = t.Model, address = t.Address, webOs = t.WebOs }),
             stream = new
             {
