@@ -29,7 +29,8 @@ public sealed unsafe class StreamTransport : IDisposable
     private EndPoint? _videoPeer, _audioPeer;
     private AesGcm? _controlCipher;
     private uint _controlSeq;
-    private ushort _videoSeq;
+    private int _videoSeq;
+    private uint _frameIndex;
     private readonly long _epochQpc = Pipeline.Qpc.Now;
 
     private IntPtr _audioRs;
@@ -82,6 +83,7 @@ public sealed unsafe class StreamTransport : IDisposable
             _session = session;
             _videoPeer = _audioPeer = null;
             _videoSeq = 0;
+            _frameIndex = 0;
             _audioSeq = 0;
             _audioTimestamp = 0;
             _controlSeq = 0;
@@ -339,12 +341,19 @@ public sealed unsafe class StreamTransport : IDisposable
         }
         int aligned = (payload.Length / blocks + blockSize - 1) / blockSize * blockSize;
         uint timestamp = (uint)(Pipeline.Qpc.ToMs(frame.CaptureQpc - _epochQpc) * 90);
-        uint frameIndex = (uint)frame.FrameIndex;
+
+        // Spread the frame over half a frame period in small groups: a gigabit burst overflows Wi-Fi buffers.
+        int totalPackets = 0;
+        long sendStart = Pipeline.Qpc.Now;
+        double spreadMs = 500.0 / Math.Max(30, s.Format?.Fps ?? 60);
+        int expected = Math.Max(1, (int)Math.Ceiling(payload.Length * (1 + FecPercent / 100.0) / blockSize));
 
         lock (_sendGate)
         {
             if (_session != s) return;
-            ushort lowSeq = _videoSeq;
+            // Numbered here, not by the encoder: a pipeline restart makes a new encoder, but Moonlight needs the count to keep rising.
+            uint frameIndex = ++_frameIndex;
+            int lowSeq = _videoSeq;
             for (int b = 0; b < blocks; b++)
             {
                 int start = b * aligned;
@@ -384,15 +393,25 @@ public sealed unsafe class StreamTransport : IDisposable
                     BinaryPrimitives.WriteUInt32BigEndian(p[4..], timestamp);
                     p[27] = multiFec;
                     BinaryPrimitives.WriteUInt32LittleEndian(p[20..], frameIndex);
+                    if (totalPackets > 0 && totalPackets % PacketsPerGroup == 0) PaceUntil(sendStart, spreadMs * totalPackets / expected);
                     try { _video.SendTo(p, SocketFlags.None, peer); }
                     catch (SocketException ex) { Log.Debug("Video send failed: {Err}", ex.SocketErrorCode); }
                     VideoPackets++;
+                    totalPackets++;
                 }
-                lowSeq = (ushort)(lowSeq + shards);
+                lowSeq += shards;
             }
             _videoSeq = lowSeq;
             VideoFrames++;
         }
+    }
+
+    private const int PacketsPerGroup = 4;
+
+    private static void PaceUntil(long startQpc, double offsetMs)
+    {
+        long due = startQpc + Pipeline.Qpc.FromMs(offsetMs);
+        while (Pipeline.Qpc.Now < due) Thread.Yield();
     }
 
     private static void Encode(byte[] buffer, int shards, int blockSize, int dataShards, int parity)
