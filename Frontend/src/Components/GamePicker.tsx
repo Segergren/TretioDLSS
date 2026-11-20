@@ -101,7 +101,7 @@ export function GamePicker({ value, onChange, className = '' }: { value: string;
         />
       </div>
       {open && text.trim().length > 0 && (
-        <ul id={id} role="listbox" className="absolute top-full left-0 z-50 mt-1.5 max-h-[340px] w-full overflow-y-auto rounded-2xl border border-edge bg-boulevard p-1.5">
+        <ul id={id} role="listbox" className="menu-rise absolute top-full left-0 z-50 mt-1.5 max-h-[340px] w-full overflow-y-auto rounded-2xl border border-edge bg-boulevard p-1.5">
           {games.length === 0 ? (
             <li className="px-2.5 py-2 text-[0.8125rem] text-dusk">No matching game</li>
           ) : (

@@ -1,7 +1,7 @@
 import { DropdownOption } from '../Components/Dropdown';
 import { AppState, CaptureFormat, EngineInfo, MonitorInfo } from '../Models/types';
 
-/** Multiplier buttons in each frame generation row: the current engine and multiplier, and how to pick one. */
+/** Multiplier picker in each frame generation row: the current engine and multiplier, and how to pick one. */
 export interface MultiplierPick {
   engine: string;
   multiplier: number;
@@ -17,9 +17,12 @@ export function engineOptions(engines: EngineInfo[], onInstall?: (id: string) =>
       reason: e.available ? undefined : (e.fixHint ?? e.reason),
     };
     if (multiplier && e.available && e.multipliers && e.multipliers.length > 1) {
-      opt.choices = e.multipliers.map((m) => ({
+      const list = e.multipliers;
+      const shown = Math.min(Math.max(multiplier.multiplier, list[0]), list[list.length - 1]);
+      opt.choicesActive = multiplier.engine === e.id;
+      opt.choices = list.map((m) => ({
         label: `x${m}`,
-        selected: multiplier.engine === e.id && multiplier.multiplier === m,
+        selected: m === shown,
         run: () => multiplier.pick(e.id, m),
       }));
     }

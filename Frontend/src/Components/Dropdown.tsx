@@ -9,8 +9,10 @@ export interface DropdownOption<T extends string> {
   reason?: string;
   /** A button inside the row, for example a download that makes a disabled option usable. */
   action?: { label: string; run: () => void; busy?: boolean; progress?: number };
-  /** Small buttons inside the row that pick a variant directly, for example the frame multiplier. */
+  /** A compact picker inside the row that picks a variant directly, for example the frame multiplier. */
   choices?: { label: string; selected: boolean; run: () => void }[];
+  /** The row's variant is the one in use, so the picker is highlighted. */
+  choicesActive?: boolean;
 }
 
 interface Props<T extends string> {
@@ -145,7 +147,7 @@ export function Dropdown<T extends string>({
           id={id}
           role="listbox"
           className={`absolute z-50 max-h-[340px] min-w-full overflow-y-auto rounded-2xl border border-edge bg-boulevard p-1.5 ${
-            dropUp ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+            dropUp ? 'menu-drop bottom-full mb-1.5' : 'menu-rise top-full mt-1.5'
           } ${align === 'right' ? 'right-0' : 'left-0'}`}
           style={{ width: 'max-content', maxWidth: 400 }}
         >
@@ -188,27 +190,12 @@ export function Dropdown<T extends string>({
                   )}
                 </span>
                 {opt.choices && !opt.disabled && (
-                  <span className="flex shrink-0 items-center gap-1 self-center" role="group" aria-label={`${opt.label} multiplier`}>
-                    {opt.choices.map((c) => (
-                      <button
-                        key={c.label}
-                        type="button"
-                        tabIndex={-1}
-                        aria-pressed={c.selected}
-                        aria-label={`${opt.label} ${c.label}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          c.run();
-                          setOpen(false);
-                        }}
-                        className={`flex h-7 min-w-9 cursor-pointer items-center justify-center rounded-full px-2.5 text-[0.8125rem] font-semibold tabular-nums transition-colors duration-200 ${
-                          c.selected ? 'bg-chalk text-night' : 'border border-edge-strong text-haze hover:border-dusk hover:text-chalk'
-                        }`}
-                      >
-                        {c.label}
-                      </button>
-                    ))}
-                  </span>
+                  <ChoicePicker
+                    label={opt.label}
+                    choices={opt.choices}
+                    active={!!opt.choicesActive}
+                    onPicked={() => setOpen(false)}
+                  />
                 )}
                 {opt.action && !opt.action.busy && (
                   <button
@@ -231,5 +218,103 @@ export function Dropdown<T extends string>({
         </ul>
       )}
     </div>
+  );
+}
+
+/** The small picker inside a row; its menu is fixed-positioned so the list's scroll area does not clip it. */
+function ChoicePicker({
+  label,
+  choices,
+  active,
+  onPicked,
+}: {
+  label: string;
+  choices: NonNullable<DropdownOption<string>['choices']>;
+  active: boolean;
+  onPicked: () => void;
+}) {
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const rootRef = useRef<HTMLSpanElement>(null);
+  const current = choices.find((c) => c.selected) ?? choices[0];
+
+  useEffect(() => {
+    if (!rect) return;
+    const onDown = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setRect(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setRect(null);
+      }
+    };
+    const onScroll = (e: Event) => {
+      if (!rootRef.current?.contains(e.target as Node)) setRect(null);
+    };
+    window.addEventListener('mousedown', onDown, true);
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      window.removeEventListener('mousedown', onDown, true);
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [rect]);
+
+  const menuHeight = choices.length * 32 + 10;
+  const up = rect != null && window.innerHeight - rect.bottom < menuHeight + 8 && rect.top > menuHeight + 8;
+
+  return (
+    <span ref={rootRef} className="shrink-0 self-center" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label={`${label} multiplier`}
+        aria-haspopup="listbox"
+        aria-expanded={rect != null}
+        onClick={(e) => setRect(rect ? null : e.currentTarget.getBoundingClientRect())}
+        className={`flex h-7 cursor-pointer items-center gap-1 rounded-full pl-3 pr-2 text-[0.8125rem] font-semibold tabular-nums transition-colors duration-200 ${
+          active ? 'bg-chalk text-night' : 'border border-edge-strong text-haze hover:border-dusk hover:text-chalk'
+        }`}
+      >
+        {current.label}
+        <ChevronDown size={14} className={`transition-transform duration-200 ${rect ? 'rotate-180' : ''} ${active ? 'text-night' : 'text-dusk'}`} aria-hidden />
+      </button>
+      {rect && (
+        <span
+          role="listbox"
+          aria-label={`${label} multiplier`}
+          className={`fixed z-[60] flex flex-col rounded-xl border border-edge bg-boulevard p-1 ${up ? 'menu-drop' : 'menu-rise'}`}
+          style={{
+            right: window.innerWidth - rect.right,
+            minWidth: rect.width,
+            ...(up ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+          }}
+        >
+          {choices.map((c) => {
+            const on = c.selected && active;
+            return (
+              <button
+                key={c.label}
+                type="button"
+                role="option"
+                aria-selected={on}
+                tabIndex={-1}
+                onClick={() => {
+                  c.run();
+                  setRect(null);
+                  onPicked();
+                }}
+                className={`flex h-8 cursor-pointer items-center justify-center rounded-lg px-3 text-[0.8125rem] font-semibold tabular-nums transition-colors duration-150 ${
+                  on ? 'bg-chalk text-night' : 'text-haze hover:bg-marquee hover:text-chalk'
+                }`}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+        </span>
+      )}
+    </span>
   );
 }
