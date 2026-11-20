@@ -118,7 +118,9 @@ public sealed class PipelineHost : IFrameSink, IDisposable
 
     public void SetWindowTitle(string title)
     {
-        if (_windowHandle != IntPtr.Zero) SetWindowTextW(_windowHandle, title);
+        if (_windowHandle == IntPtr.Zero) return;
+        SetWindowTextW(_windowHandle, title);
+        TretioDLSS.Platform.WindowIdentity.SetName(_windowHandle, title);
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]

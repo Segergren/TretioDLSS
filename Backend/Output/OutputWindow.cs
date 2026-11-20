@@ -72,6 +72,7 @@ public sealed class OutputWindow : IDisposable
                 return;
             }
             lock (Windows) Windows[_hwnd] = this;
+            WindowIdentity.Set(_hwnd, "TretioDLSS.Output", title);
             _threadId = GetCurrentThreadId();
             int dark = 1;
             DwmSetWindowAttribute(_hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, 4);
@@ -165,6 +166,7 @@ public sealed class OutputWindow : IDisposable
                 CloseRequested?.Invoke();
                 return IntPtr.Zero;
             case WM_USER + 1:
+                WindowIdentity.Clear(hwnd);
                 DestroyWindow(hwnd);
                 return IntPtr.Zero;
             case WM_DESTROY:
