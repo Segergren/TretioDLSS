@@ -73,6 +73,22 @@
     </ItemGroup>
   </Target>
 
+  <!-- DLSS Frame Generation: the native NGX bridge and NVIDIA's runtime, when ThirdParty/dlss is fetched (tools/dlss/fetch.ps1). -->
+  <ItemGroup>
+    <TretioNgxSources Include="Native\TretioNgx\*.cpp;Native\TretioNgx\*.h;Native\TretioNgx\build.ps1" />
+  </ItemGroup>
+
+  <Target Name="BuildTretioNgx" Condition="Exists('ThirdParty\dlss\lib\nvsdk_ngx_s.lib')" Inputs="@(TretioNgxSources)" Outputs="Native\build\TretioNgx.dll">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File Native\TretioNgx\build.ps1" />
+  </Target>
+
+  <Target Name="IncludeTretioNgx" BeforeTargets="AssignTargetPaths" DependsOnTargets="BuildTretioNgx">
+    <ItemGroup>
+      <None Include="Native\build\TretioNgx.dll" Condition="Exists('Native\build\TretioNgx.dll')" Link="TretioNgx.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+      <None Include="ThirdParty\dlss\bin\nvngx_dlssg.dll" Condition="Exists('ThirdParty\dlss\bin\nvngx_dlssg.dll')" Link="nvngx_dlssg.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+
   <!-- DirectML's debug layer comes with its package but is only for driver debugging. -->
   <Target Name="DropDirectMLDebug" AfterTargets="Build;Publish">
     <Delete Files="$(OutDir)DirectML.Debug.dll;$(OutDir)DirectML.Debug.pdb" />

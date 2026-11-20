@@ -40,6 +40,7 @@ public static class Profiles
         {
             "off" => "No frame generation",
             "vfx-vfg" => $"NVIDIA Frame Generation x{p.FrameGen.Multiplier}",
+            "dlss-fg" => $"DLSS Frame Generation x{p.FrameGen.Multiplier}",
             "blend" => $"Blend x{p.FrameGen.Multiplier}",
             "rife" => $"RIFE x{p.FrameGen.Multiplier}",
             _ => p.FrameGen.Engine,

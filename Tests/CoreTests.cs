@@ -345,6 +345,15 @@ public class SafeModeTests
     }
 
     [Fact]
+    public void DlssFrameGenerationIsListedUpToFourTimes()
+    {
+        var dlss = Assert.Single(EngineCatalog.FrameGenerators(new Capabilities { Nvidia = true }), e => e.Id == "dlss-fg");
+        Assert.False(dlss.Available);
+        Assert.Equal([2, 3, 4], dlss.Multipliers);
+        Assert.Equal("DLSS Frame Generation x4", Profiles.Summary(new ProfileData { FrameGen = new FrameGenSettings { Engine = "dlss-fg", Multiplier = 4 } }).Split(',')[0]);
+    }
+
+    [Fact]
     public void CleanStopLeavesNoMarker()
     {
         SafeMode.ResetForTests();

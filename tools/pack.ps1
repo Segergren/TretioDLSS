@@ -9,6 +9,9 @@ The package includes NVIDIA's Video Effects runtime for frame generation and RTX
 (about 275 MB, fetched from NVIDIA's public package and checked against its hashes), so the app
 works without a first download. -NoNvidia leaves it out; the app then downloads it on first start.
 
+It also includes DLSS Frame Generation: nvngx_dlssg.dll 310.7.0 from NVIDIA's DLSS SDK (tools/dlss/fetch.ps1, about 8 MB)
+and TretioNgx.dll, built from Native/TretioNgx with the MSVC x64 tools.
+
 It also includes the RIFE models (about 140 MB), built with tools/rife/export.py, which needs
 Python with torch and onnx. Models already in ThirdParty/models are reused (delete them to rebuild). -NoRife leaves them out.
 
@@ -29,8 +32,13 @@ Set-Location $root
 $publish = Join-Path $root "publish\$Version"
 if (Test-Path $publish) { Remove-Item -Recurse -Force $publish }
 
+& (Join-Path $PSScriptRoot "dlssetch.ps1")
+
 dotnet publish TretioDLSS.csproj -c Release -r win-x64 --self-contained true -p:Version=$Version -o $publish
 if ($LASTEXITCODE -ne 0) { throw "publish failed" }
+foreach ($dll in "TretioNgx.dll", "nvngx_dlssg.dll") {
+    if (-not (Test-Path (Join-Path $publish $dll))) { throw "$dll is missing from the package" }
+}
 
 if (-not $NoNvidia) {
     & (Join-Path $publish "TretioDLSS.exe") --install all --to (Join-Path $publish "nvvfx") | Out-Host

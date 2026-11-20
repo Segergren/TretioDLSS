@@ -115,6 +115,7 @@ const state = {
         { key: 'model', label: 'Model', values: [{ value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' }] },
       ],
     },
+    { id: 'dlss-fg', name: 'DLSS Frame Generation', available: true, multipliers: [2, 3, 4] },
     { id: 'amd-frc', name: 'AMD Frame Generation', available: false, reason: 'The picture runs on a non-AMD GPU', fixHint: 'Runs only when the picture is on the AMD GPU', multipliers: [2] },
     { id: 'rife', name: 'RIFE', available: true, multipliers: [2, 3, 4], options: [{ key: 'model', label: 'Model', values: [{ value: 'rife426', label: 'Quality (RIFE 4.26)' }, { value: 'rife46', label: 'Fast (RIFE 4.6)' }] }] },
   ],

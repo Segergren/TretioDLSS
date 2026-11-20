@@ -9,7 +9,7 @@ namespace TretioDLSS.Engines;
 /// </summary>
 public static class SafeMode
 {
-    private static readonly HashSet<string> Guarded = ["vfx-vfg", "vfx-vsr", "rife"];
+    private static readonly HashSet<string> Guarded = ["vfx-vfg", "vfx-vsr", "rife", "dlss-fg"];
 
     /// <summary>The engine the last run died in, disabled for this session; null when all is well.</summary>
     public static string? Disabled { get; private set; }

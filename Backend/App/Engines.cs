@@ -14,6 +14,7 @@ public static class EngineCatalog
     {
         "vfx-vsr" or "rtx-video" => "RTX Video",
         "vfx-vfg" => "NVIDIA Frame Generation",
+        "dlss-fg" => "DLSS Frame Generation",
         "rife" => "RIFE",
         "amd-frc" => "AMD Frame Generation",
         "fsr1" => "FSR 1",
@@ -64,6 +65,13 @@ public static class EngineCatalog
             list.Add(new("vfx-vfg", "NVIDIA Frame Generation", false, "Not downloaded", "Download it from NVIDIA", [2, 3, 4], vfxModels, VfxInstaller.State("vfx-vfg")));
         else
             list.Add(new("vfx-vfg", "NVIDIA Frame Generation", true, Multipliers: [2, 3, 4], Options: vfxModels));
+
+        if (!caps.Nvidia || !caps.Ada)
+            list.Add(new("dlss-fg", "DLSS Frame Generation", false, "Needs an RTX 40 or 50 series GPU", "Needs an RTX 40 or 50 series GPU", [2, 3, 4]));
+        else if (DlssFrameGenerator.Missing() is string missing)
+            list.Add(new("dlss-fg", "DLSS Frame Generation", false, "Not installed", missing, [2, 3, 4]));
+        else
+            list.Add(new("dlss-fg", "DLSS Frame Generation", true, Multipliers: [2, 3, 4]));
 
         var models = RifeFrameGenerator.Models().OrderByDescending(m => m).Select(m => new EngineOptionValue(m, RifeFrameGenerator.ModelLabel(m))).ToList();
         if (models.Count == 0)

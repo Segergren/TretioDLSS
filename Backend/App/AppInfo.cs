@@ -12,6 +12,8 @@ public static class AppInfo
     public const string MutexName = "TretioDLSS_SingleInstance";
     public const string PipeName = "TretioDLSS_Pipe";
     public const string UpdateSource = "https://github.com/Segergren/TretioDLSS";
+    /// <summary>Project id NGX asks of custom engines.</summary>
+    public const string NgxProjectId = "6f1c2b7e-3d4a-4e59-9b8f-2a7c5d10e3b4";
 
     public static string Version { get; } =
         Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]

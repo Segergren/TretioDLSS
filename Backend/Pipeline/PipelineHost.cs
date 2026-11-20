@@ -320,8 +320,8 @@ public sealed class PipelineHost : IFrameSink, IDisposable
             upscaler = CreateUpscaler(g, _cfg.Upscaler, info);
             EffectiveUpscaler = upscaler.Id;
             compare = new ShaderUpscaler(g, "bilinear");
-            generator = CreateGenerator(g, _cfg.FrameGen, _cfg.FrameGenModel);
-            int n = generator != null ? Math.Max(2, _cfg.Multiplier) : 1;
+            generator = CreateGenerator(g, _cfg.FrameGen, _cfg.FrameGenModel, _cfg.Multiplier);
+            int n = generator == null ? 1 : generator is AmfFrameGenerator ? 2 : Math.Max(2, _cfg.Multiplier);
             if (generator != null)
             {
                 Array.Fill(_genCostMs, generator is BlendGenerator ? 0.1 : 2.0);
@@ -784,10 +784,11 @@ public sealed class PipelineHost : IFrameSink, IDisposable
         }
     }
 
-    private static IFrameGenerator? CreateGenerator(GraphicsDevice g, string id, string model) => SafeMode.IsDisabled(id) ? null : id switch
+    private static IFrameGenerator? CreateGenerator(GraphicsDevice g, string id, string model, int multiplier) => SafeMode.IsDisabled(id) ? null : id switch
     {
         "blend" => new BlendGenerator(g),
         "vfx-vfg" => VfxFrameGenerator.TryCreate(g, model),
+        "dlss-fg" => DlssFrameGenerator.TryCreate(g, multiplier),
         "rife" => RifeFrameGenerator.TryCreate(g, model),
         "amd-frc" => AmfFrameGenerator.TryCreate(g, model),
         _ => null,
