@@ -36,7 +36,14 @@ public sealed class GameStreamHost : IDisposable
     public Action? StopPipeline;
     public event Action? Changed;
 
+    private readonly object _startGate = new();
+
     public void Start()
+    {
+        lock (_startGate) StartLocked();
+    }
+
+    private void StartLocked()
     {
         if (Running) return;
         Error = null;
@@ -65,7 +72,8 @@ public sealed class GameStreamHost : IDisposable
             _http.Start();
             _rtsp = new GameStreamRtsp(Ports) { Current = () => _session, OnAnnounce = Announce };
             _rtsp.Start();
-            RegisterMdns();
+            // Windows takes most of a second to confirm the registration; nothing needs to wait for it.
+            Task.Run(RegisterMdns);
             Log.Information("GameStream host ready as \"{Name}\" on port {Port}, {Clients} paired client(s)", HostName, Ports.Http, _id.Clients.Count);
         }
         catch (Exception ex)
@@ -115,7 +123,14 @@ public sealed class GameStreamHost : IDisposable
         var err = stackalloc byte[256];
         string instance = $"{HostName}._nvstream._tcp.local";
         string host = Dns.GetHostName() + ".local";
-        _mdns = StreamNative.ts_mdns_register(instance, host, (ushort)Ports!.Http, err, 256);
+        var handle = StreamNative.ts_mdns_register(instance, host, (ushort)Ports!.Http, err, 256);
+        if (!Running)
+        {
+            // The host stopped while Windows was registering it.
+            if (handle != IntPtr.Zero) StreamNative.ts_mdns_deregister(handle);
+            return;
+        }
+        _mdns = handle;
         string e = StreamNative.Text(err);
         if (_mdns == IntPtr.Zero || e.Length > 0) Log.Warning("GameStream mDNS: {Error}", e.Length > 0 ? e : "registration failed");
         else Log.Information("GameStream mDNS: {Instance} on {Host}:{Port}", instance, host, Ports.Http);

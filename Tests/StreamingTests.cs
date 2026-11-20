@@ -34,6 +34,21 @@ public class StreamingTests
     }
 
     [Fact]
+    public void SetupPicksTheSharpestFormatUsbCarries()
+    {
+        // The Guermok card's Media Foundation list (subset): 4K60 NV12 and 4K30 YUY2 are offered but too much for USB 3.
+        var guermok = new List<TretioDLSS.Capture.CaptureFormat>
+        {
+            new(3840, 2160, 60, "NV12"), new(3840, 2160, 60, "MJPG"), new(3840, 2160, 30, "NV12"), new(3840, 2160, 30, "YUY2"),
+            new(2560, 1440, 120, "NV12"), new(2560, 1440, 60, "NV12"), new(2560, 1440, 30, "YUY2"),
+            new(1920, 1080, 120, "NV12"), new(1920, 1080, 60, "YUY2"), new(4096, 2160, 30, "NV12"),
+        };
+        Assert.Equal("3840x2160@30:NV12", TretioDLSS.Capture.FormatPicker.PickForRate(guermok, 30)!.Key);
+        Assert.Equal("2560x1440@60:NV12", TretioDLSS.Capture.FormatPicker.PickForRate(guermok, 60)!.Key);
+        Assert.Equal("1920x1080@120:NV12", TretioDLSS.Capture.FormatPicker.PickForRate(guermok, 120)!.Key);
+    }
+
+    [Fact]
     public void CoverIsAPortraitPng()
     {
         var png = AppCover.Bytes;

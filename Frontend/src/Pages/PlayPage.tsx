@@ -15,13 +15,13 @@ import { Dropdown, type DropdownOption } from '../Components/Dropdown';
 import { StartButton } from '../Components/StartButton';
 import { StatTile } from '../Components/StatTile';
 import { TvPanel } from '../Components/TvPanel';
+import { NoPictureBadge } from '../Components/NoPictureBadge';
 import { useStore } from '../lib/store';
 import {
   currentSourceName,
   currentSourceValue,
   engineOptions,
   formatDelay,
-  formatHz,
   isTvOutput,
   outputChoices,
   outputName,
@@ -40,6 +40,7 @@ export function PlayPage({ onOpenSettings }: { onOpenSettings: (section: string)
   const upscaler = state.upscalers.find((e) => e.id === s.upscale.engine);
   const frameGen = state.frameGenerators.find((e) => e.id === s.frameGen.engine);
   const tvOut = isTvOutput(state);
+  const noSignal = state.hints.find((h) => h.id === 'nosignal');
   const sourceOk = sourceReady(state);
 
   const frameGenTitle = s.frameGen.engine === 'off' ? 'Off' : (frameGen?.name ?? s.frameGen.engine);
@@ -58,9 +59,6 @@ export function PlayPage({ onOpenSettings }: { onOpenSettings: (section: string)
     }
   };
 
-  const statusTag =
-    status === 'running' ? 'Live' : status === 'starting' ? 'Starting' : status === 'waiting' ? 'Waiting' : status === 'faulted' ? 'Error' : 'Ready';
-
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col gap-4 px-9 pt-1 pb-5">
       <section
@@ -77,26 +75,25 @@ export function PlayPage({ onOpenSettings }: { onOpenSettings: (section: string)
           <div className="hero-shade absolute inset-0" aria-hidden />
         </div>
 
+        {noSignal && <NoPictureBadge className="absolute top-5 right-5" />}
+
         {/* With a TV picked, the TV panel below needs room, so the hero is shorter and the window does not scroll. */}
         <div className={`absolute left-9 w-[min(520px,60%)] ${tvOut ? 'top-8' : 'top-12'}`}>
           <h1 className="truncate pb-1.5 font-display text-[2.75rem] leading-[48px] font-bold text-chalk">{currentSourceName(state)}</h1>
-          <div className="mt-1.5 flex flex-wrap gap-2">
-            <Tag>
-              <span
-                className={`h-[7px] w-[7px] shrink-0 rounded-full ${status === 'running' ? 'live-pulse bg-flamingo' : status === 'faulted' ? 'bg-error' : status === 'waiting' ? 'bg-warning' : 'bg-dusk'}`}
-                aria-hidden
-              />
-              {statusTag}
-            </Tag>
-            <Tag>{live && stats.sourceDetail ? stats.sourceDetail : sourceDetail(state)}</Tag>
-            <Tag>{outputSummary(state)}</Tag>
-          </div>
+          <p className="mt-1 truncate text-[0.9375rem] leading-[22px] text-dusk tabular-nums">
+            {inputSummary(state, live ? stats.realFps : null)}
+            <span className="mx-2 text-dusk/70" aria-hidden>
+              &rarr;
+            </span>
+            {outputSummary(state, live ? stats.outputFps : null)}
+          </p>
           <div className="mt-6 flex items-center gap-3">
             <StartButton
               status={status}
               canStart={sourceOk}
               onStart={() => send('StartPipeline')}
               onStop={() => send('StopPipeline')}
+              waitingLabel={tvOut && !state.stream.session ? 'Waiting for TV' : undefined}
             />
             <button
               type="button"
@@ -170,7 +167,7 @@ export function PlayPage({ onOpenSettings }: { onOpenSettings: (section: string)
         <Notice level={state.pipeline.status === 'faulted' ? 'error' : 'warning'} text={state.pipeline.message} />
       )}
       {tvOut && <TvPanel />}
-      {state.hints.filter((h) => !(tvOut && h.id === 'tvwait' && h.level === 'info')).map((h) => (
+      {state.hints.filter((h) => h.id !== 'nosignal' && !(tvOut && h.id === 'tvwait' && h.level === 'info')).map((h) => (
         <Notice
           key={h.id}
           level={h.level}
@@ -198,14 +195,6 @@ function IdleBackdrop({ compact }: { compact?: boolean }) {
         <rect x="86" y="70" width="150" height="110" rx="18" fill="none" stroke="var(--color-flamingo)" strokeOpacity="0.16" strokeWidth="14" />
       </svg>
     </div>
-  );
-}
-
-function Tag({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="frost-light inline-flex h-7 max-w-full items-center gap-1.5 rounded-full px-3 text-[0.8125rem] leading-none text-chalk">
-      <span className="flex min-w-0 items-center gap-1.5 truncate leading-[18px]">{children}</span>
-    </span>
   );
 }
 
@@ -326,15 +315,23 @@ function sourceReady(state: AppState) {
   return true;
 }
 
-function outputSummary(state: AppState) {
+/** The input half of the line under the title: what the card delivers, with the measured game rate while running. */
+function inputSummary(state: AppState, liveFps: number | null) {
+  const s = state.settings.source;
+  if (s.kind !== 'uvc') return sourceDetail(state);
+  const fps = liveFps != null && liveFps > 0 ? Math.round(liveFps) : Math.round(s.fps);
+  return `${s.width} x ${s.height}, ${fps} fps`;
+}
+
+/** The output half of the line under the title: size and rate; the Output tile already names where it goes. */
+function outputSummary(state: AppState, liveFps: number | null) {
   const s = state.settings;
+  const fps = liveFps != null && liveFps > 0 ? Math.round(liveFps) : Math.round(s.source.fps * (s.frameGen.engine === 'off' ? 1 : s.frameGen.multiplier));
   if (isTvOutput(state)) {
     const ss = state.stream.session;
-    return ss?.width ? `${outputName(state)}, ${ss.width} x ${ss.height}, ${ss.fps} fps` : `${outputName(state)}, through Moonlight`;
+    return ss?.width ? `${ss.width} x ${ss.height}, ${fps} fps` : `${fps} fps`;
   }
   const m = state.monitors.find((x) => x.id === s.display.monitorId) ?? state.monitors.find((x) => x.primary);
-  if (!m) return 'No display';
-  const sync =
-    s.display.sync === 'auto' ? (m.vrr ? 'VRR' : 'V-Sync') : s.display.sync === 'vsync' ? 'V-Sync' : s.display.sync === 'vrr' ? 'VRR' : 'Tearing';
-  return `${m.name}, ${formatHz(m.refresh)} Hz, ${sync}`;
+  if (!m) return 'no display';
+  return `${m.width} x ${m.height}, ${fps} fps`;
 }

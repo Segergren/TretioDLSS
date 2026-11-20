@@ -61,7 +61,7 @@ const settings = {
     exitFullscreen: 'Ctrl+Alt+F11',
   },
   advanced: { adapter: 'auto', logLevel: 'info', vfxRuntimePath: '' },
-  ui: { closeToTray: false },
+  ui: { closeToTray: false, lastVersion: '0.1.0', onboarded: scenario !== 'setup' },
   discord: { enabled: false, game: 'Grand Theft Auto VI', startTime: '' },
   activeProfile: 'Profile 1',
 };
@@ -80,7 +80,18 @@ const state = {
   profiles: [
     { name: 'Profile 1', summary: '1440p30, NVIDIA FG x4, RTX Video' },
   ],
-  devices: scenario === 'nodevice' ? [] : [{ id: 'gm29f', name: process.env.MOCK_DEVICE ?? 'USB3 Video (GM-29F)', formats }],
+  devices:
+    scenario === 'nodevice'
+      ? []
+      : [
+          { id: 'gm29f', name: process.env.MOCK_DEVICE ?? 'USB3 Video (GM-29F)', formats },
+          ...(scenario === 'setup'
+            ? [
+                { id: 'root#image#0000', name: 'e2eSoft iVCam', formats: [{ width: 1920, height: 1080, fps: 60, subtype: 'YUY2' }] },
+                { id: 'usb#vid_046d&pid_085e', name: 'Logitech BRIO', formats: [{ width: 1280, height: 720, fps: 30, subtype: 'YUY2' }] },
+              ]
+            : []),
+        ],
   windows: [
     { hwnd: '1', title: 'PS Remote Play', process: 'RemotePlay.exe' },
     { hwnd: '2', title: 'chiaki-ng', process: 'chiaki.exe' },
@@ -139,7 +150,7 @@ const state = {
   ],
   pipeline: { status: process.env.MOCK_AUTOSTART ? 'running' : 'idle' },
   gpuName: 'NVIDIA GeForce RTX 4090',
-  hints: scenario === 'hint' ? [{ id: 'hdcp', level: 'warning', text: 'The picture is black. Check the HDMI cable. On a PS5, turn off HDCP under Settings, System, HDMI.' }] : [],
+  hints: scenario === 'hint' ? [{ id: 'nosignal', level: 'warning', text: 'The picture is black. Check the HDMI cable. On a PS5, turn off HDCP under Settings, System, HDMI.' }] : [],
 };
 
 const wsPort = Number(process.env.MOCK_WS_PORT ?? 44130);
@@ -258,6 +269,11 @@ wss.on('connection', (ws, req) => {
         state.stream.waitingPin = null;
         broadcast('State', state);
         break;
+      case 'CompleteOnboarding':
+        state.settings.ui.onboarded = true;
+        state.settings.display.monitorId = Parameters.monitorId;
+        broadcast('State', state);
+        break;
       case 'DismissReleaseNotes':
         state.releaseNotes = [];
         broadcast('State', state);
@@ -273,6 +289,11 @@ wss.on('connection', (ws, req) => {
         broadcast('State', state);
         break;
       case 'StartPipeline':
+        if (state.settings.display.monitorId.startsWith('tv:')) {
+          state.pipeline = { status: 'waiting', message: 'Waiting for the TV' };
+          broadcast('State', state);
+          break;
+        }
         state.pipeline = { status: 'starting' };
         broadcast('State', state);
         setTimeout(() => {

@@ -47,6 +47,7 @@ public static class Program
 
         var settings = new SettingsService(AppInfo.SettingsFile);
         bool firstRun = !settings.Load();
+        if (firstRun && !cli.IsToolMode) settings.Current.Ui.Onboarded = false;
 
         if (cli.Headless || !cli.IsToolMode) Engines.SafeMode.CheckAtStartup();
 

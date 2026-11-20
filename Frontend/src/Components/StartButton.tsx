@@ -1,56 +1,96 @@
+import { useEffect, useState, type ReactNode } from 'react';
 import { Play, Square } from 'lucide-react';
+import { TextMorph } from 'torph/react';
 import { PipelineStatus } from '../Models/types';
 
+/**
+ * One button for the whole run: Start, Starting, Waiting, Stop. It stays mounted and the label
+ * morphs letter by letter (Torph), so the width follows the text instead of one button replacing another.
+ */
 export function StartButton({
   status,
   canStart,
   onStart,
   onStop,
+  waitingLabel,
 }: {
   status: PipelineStatus;
   canStart: boolean;
   onStart: () => void;
   onStop: () => void;
+  /** Shown instead of Stop while waiting for something outside the app, such as the TV; hover reveals Cancel. */
+  waitingLabel?: string;
 }) {
+  const [hover, setHover] = useState(false);
+  // The cursor that just pressed Start is still on the button: Cancel waits until it has left once.
+  const [armed, setArmed] = useState(false);
   const running = status === 'running' || status === 'waiting';
-  const busy = status === 'starting' || status === 'stopping';
+  const waitingForTv = status === 'waiting' && !!waitingLabel;
+  useEffect(() => {
+    if (waitingForTv) setArmed(!hover);
+  }, [waitingForTv]); // eslint-disable-line react-hooks/exhaustive-deps
+  const showCancel = hover && armed;
 
-  if (running || status === 'stopping') {
-    return (
-      <button
-        type="button"
-        onClick={onStop}
-        disabled={status === 'stopping'}
-        className="bg-accent-fill inline-flex h-13 min-w-[9.5rem] shrink-0 justify-center items-center gap-2.5 rounded-full px-8 text-[1rem] font-semibold leading-none text-night transition-[filter] duration-200 enabled:hover:brightness-106 disabled:opacity-70"
-      >
-        {status === 'stopping' ? <Spinner dark /> : <Square size={16} fill="currentColor" className="shrink-0" aria-hidden />}
-        {status === 'stopping' ? 'Stopping' : 'Stop'}
-      </button>
-    );
+  let key: string;
+  let icon: ReactNode;
+  let label: string;
+  let tone: 'accent' | 'soft' | 'off';
+  let onClick: (() => void) | undefined;
+  let disabled = false;
+
+  if (waitingForTv) {
+    key = showCancel ? 'cancel' : 'waiting';
+    icon = showCancel ? <Square size={15} fill="currentColor" className="shrink-0" aria-hidden /> : <Spinner />;
+    label = showCancel ? 'Cancel' : waitingLabel!;
+    tone = 'soft';
+    onClick = onStop;
+  } else if (running || status === 'stopping') {
+    key = status === 'stopping' ? 'stopping' : 'stop';
+    icon = status === 'stopping' ? <Spinner dark /> : <Square size={16} fill="currentColor" className="shrink-0" aria-hidden />;
+    label = status === 'stopping' ? 'Stopping' : 'Stop';
+    tone = 'accent';
+    onClick = onStop;
+    disabled = status === 'stopping';
+  } else if (!canStart) {
+    key = 'off';
+    icon = <Play size={18} fill="currentColor" className="shrink-0" aria-hidden />;
+    label = 'Start';
+    tone = 'off';
+    disabled = true;
+  } else {
+    const busy = status === 'starting';
+    key = busy ? 'starting' : 'start';
+    icon = busy ? <Spinner dark /> : <Play size={18} fill="currentColor" className="shrink-0" aria-hidden />;
+    label = busy ? 'Starting' : 'Start';
+    tone = 'accent';
+    onClick = onStart;
+    disabled = busy;
   }
 
-  if (!canStart) {
-    return (
-      <button
-        type="button"
-        disabled
-        className="inline-flex h-13 min-w-[9.5rem] shrink-0 justify-center cursor-not-allowed items-center gap-2.5 rounded-full bg-white/8 px-8 text-[1rem] font-semibold leading-none text-dusk"
-      >
-        <Play size={18} fill="currentColor" className="shrink-0" aria-hidden />
-        Start
-      </button>
-    );
-  }
+  const tones = {
+    accent: 'bg-accent-fill text-night enabled:hover:brightness-106',
+    soft: 'frost-light text-chalk hover:bg-white/16',
+    off: 'cursor-not-allowed bg-white/8 text-dusk',
+  };
 
   return (
     <button
       type="button"
-      onClick={onStart}
-      disabled={busy}
-      className="bg-accent-fill inline-flex h-13 min-w-[9.5rem] shrink-0 justify-center items-center gap-2.5 rounded-full px-8 text-[1rem] font-semibold leading-none text-night transition-[filter] duration-200 enabled:hover:brightness-106"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={waitingForTv ? `${waitingLabel}, click to cancel` : undefined}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => {
+        setHover(false);
+        setArmed(true);
+      }}
+      // While waiting the button keeps the width of the waiting label, so hovering to Cancel only morphs the text.
+      className={`relative inline-flex h-13 shrink-0 items-center justify-center gap-2.5 overflow-hidden rounded-full px-8 text-[1rem] leading-none font-semibold whitespace-nowrap transition-[min-width,background-color,color,filter] duration-300 ${waitingForTv ? 'min-w-[12.25rem]' : 'min-w-[9.5rem]'} ${tones[tone]}`}
     >
-      {busy ? <Spinner dark /> : <Play size={18} fill="currentColor" className="shrink-0" aria-hidden />}
-      {busy ? 'Starting' : 'Start'}
+      <span key={key} className="label-morph inline-flex shrink-0">
+        {icon}
+      </span>
+      <TextMorph duration={320}>{label}</TextMorph>
     </button>
   );
 }

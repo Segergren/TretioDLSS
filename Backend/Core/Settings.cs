@@ -142,6 +142,9 @@ public sealed class UiSettings
     /// <summary>The close button hides the window to the tray instead of exiting.</summary>
     public bool CloseToTray { get; set; }
 
+    /// <summary>False until the first-run setup is finished; existing settings files count as set up.</summary>
+    public bool Onboarded { get; set; } = true;
+
     /// <summary>The version that ran last; a newer one shows its release notes once.</summary>
     public string LastVersion { get; set; } = "";
 }

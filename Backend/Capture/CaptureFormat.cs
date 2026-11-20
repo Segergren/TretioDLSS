@@ -32,6 +32,24 @@ public static class FormatPicker
             ?? list.OrderByDescending(f => f.Fps).ThenByDescending(f => (long)f.Width * f.Height).FirstOrDefault();
     }
 
+    /// <summary>USB 3 carries about 3.3 Gbit/s of picture in practice; faster formats drop frames.</summary>
+    public const double UsbBitsPerSecond = 3.3e9;
+
+    /// <summary>
+    /// The sharpest format at the game's frame rate that the USB link can carry: NV12 before YUY2,
+    /// MJPEG only when no uncompressed format fits.
+    /// </summary>
+    public static CaptureFormat? PickForRate(IEnumerable<CaptureFormat> formats, double fps)
+    {
+        var atRate = formats.Where(f => RateMatches(f.Fps, fps) && f.Width <= 3840).ToList();
+        double Bits(CaptureFormat f) => (double)f.Width * f.Height * (f.Subtype == "NV12" ? 12 : 16) * f.Fps;
+        return atRate.Where(f => f.Uncompressed && Bits(f) <= UsbBitsPerSecond)
+                .OrderByDescending(f => (long)f.Width * f.Height)
+                .ThenBy(f => f.Subtype == "NV12" ? 0 : 1)
+                .FirstOrDefault()
+            ?? atRate.Where(f => f.Subtype == "MJPG").OrderByDescending(f => (long)f.Width * f.Height).FirstOrDefault();
+    }
+
     /// <summary>The device format closest to what the settings ask for.</summary>
     public static CaptureFormat? Find(IEnumerable<CaptureFormat> formats, int w, int h, double fps, string subtype) =>
         formats.FirstOrDefault(f => f.Width == w && f.Height == h && RateMatches(f.Fps, fps) && f.Subtype == subtype)

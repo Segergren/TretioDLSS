@@ -46,6 +46,9 @@ public sealed class AppHost : IDisposable
     private List<TvInfo> _tvs = TvDiscovery.LoadCache();
     private volatile bool _tvWaiting;
     private List<ReleaseNote> _releaseNotes = new();
+    private Windows.Devices.Enumeration.DeviceWatcher? _cameraWatcher;
+    private Timer? _deviceDebounce;
+    private volatile bool _devicesStale;
 
     public sealed record HintAction(string Label, string Method, object? Parameters = null);
     public sealed record Hint(string Id, string Level, string Text, HintAction? Action = null);
@@ -71,6 +74,7 @@ public sealed class AppHost : IDisposable
         RefreshDevices(quiet: true);
         UpdateStreamHost(Settings.Current);
         Task.Run(ScanTvs);
+        WatchCaptureDevices();
         Task.Run(async () =>
         {
             Caps = Capabilities.Detect();
@@ -251,6 +255,13 @@ public sealed class AppHost : IDisposable
                 }
                 case "StopPipeline":
                     StopPipeline();
+                    break;
+                case "CompleteOnboarding":
+                    CompleteOnboarding(
+                        p.GetProperty("monitorId").GetString() ?? "",
+                        p.TryGetProperty("deviceId", out var dv) ? dv.GetString() : null,
+                        p.GetProperty("inputFps").GetDouble(),
+                        p.GetProperty("outputFps").GetDouble());
                     break;
                 case "DismissReleaseNotes":
                     _releaseNotes = new();
@@ -527,6 +538,80 @@ public sealed class AppHost : IDisposable
 
     public bool PipelineRunning => _pipeline != null;
 
+    /// <summary>Plugging a capture card in or out refreshes the device lists, so pickers update on their own.</summary>
+    private void WatchCaptureDevices()
+    {
+        try
+        {
+            var w = Windows.Devices.Enumeration.DeviceInformation.CreateWatcher(Windows.Devices.Enumeration.DeviceClass.VideoCapture);
+            bool ready = false;
+            w.EnumerationCompleted += (_, _) => ready = true;
+            void Changed()
+            {
+                if (!ready) return;
+                _deviceDebounce?.Dispose();
+                _deviceDebounce = new Timer(_ =>
+                {
+                    // Reading formats opens each card, which can disturb a running capture: wait until it stops.
+                    if (_pipeline != null)
+                    {
+                        _devicesStale = true;
+                        return;
+                    }
+                    Log.Information("Capture devices changed, refreshing");
+                    RefreshDevices();
+                }, null, 1500, Timeout.Infinite);
+            }
+            w.Added += (_, _) => Changed();
+            w.Removed += (_, _) => Changed();
+            w.Start();
+            _cameraWatcher = w;
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Capture device watcher unavailable");
+        }
+    }
+
+    /// <summary>First-run setup: output, capture card, the game's rate and the output rate become settings.</summary>
+    private void CompleteOnboarding(string monitorId, string? deviceId, double inputFps, double outputFps)
+    {
+        var dev = deviceId == null ? null : _devices.FirstOrDefault(d => d.Id == deviceId);
+        var format = dev == null ? null : FormatPicker.PickForRate(dev.Formats, inputFps);
+        int multiplier = Math.Max(1, (int)Math.Round(outputFps / Math.Max(1, inputFps)));
+        string realEngine = Caps.Ada ? "vfx-vfg" : Caps.AmdPipeline && Caps.AmfVersion != null ? "amd-frc" : RifeFrameGenerator.Models().Count > 0 ? "rife" : "off";
+        Settings.Mutate(s =>
+        {
+            if (monitorId.Length > 0) s.Display.MonitorId = monitorId;
+            if (dev != null)
+            {
+                s.Source.Kind = "uvc";
+                s.Source.DeviceId = dev.Id;
+                if (format != null)
+                {
+                    s.Source.Width = format.Width;
+                    s.Source.Height = format.Height;
+                    s.Source.Fps = format.Fps;
+                    s.Source.Subtype = format.Subtype;
+                }
+            }
+            if (multiplier <= 1 || realEngine == "off")
+            {
+                s.FrameGen.Engine = "off";
+                s.FrameGen.Multiplier = 1;
+            }
+            else
+            {
+                if (s.FrameGen.Engine is "off" or "blend") s.FrameGen.Engine = realEngine;
+                s.FrameGen.Multiplier = FrameGen.ClampMultiplier(s.FrameGen.Engine, multiplier);
+            }
+            s.Ui.Onboarded = true;
+        });
+        Log.Information("Setup done: output {Output}, card {Card} as {Format}, game {In} fps, output {Out} fps ({Engine} x{Mult})",
+            monitorId, dev?.Name ?? "none", format?.Key ?? "unchanged", inputFps, outputFps, Settings.Current.FrameGen.Engine, Settings.Current.FrameGen.Multiplier);
+        PushState();
+    }
+
     /// <summary>First start after an update: the notes of every release since the last version that ran, once.</summary>
     private async Task ShowReleaseNotesIfUpdated()
     {
@@ -556,10 +641,15 @@ public sealed class AppHost : IDisposable
 
     private TvInfo? SelectedTv(Settings s) => _tvs.FirstOrDefault(t => "tv:" + t.Id == s.Display.MonitorId);
 
-    private void UpdateStreamHost(Settings s)
+    /// <summary>Starts or stops the TV host for the selected output; in the background unless the caller needs the result.</summary>
+    private void UpdateStreamHost(Settings s, bool wait = false)
     {
         bool want = IsTvOutput(s);
-        if (want && !_stream.Running) _stream.Start();
+        if (want && !_stream.Running)
+        {
+            if (wait) _stream.Start();
+            else Task.Run(_stream.Start);
+        }
         else if (!want && _stream.Running) Task.Run(_stream.Stop);
     }
 
@@ -583,7 +673,7 @@ public sealed class AppHost : IDisposable
     /// <summary>Start with a TV picked: the host waits for Moonlight; the pipeline starts when the TV launches the app.</summary>
     private void WaitForTv(Settings s)
     {
-        UpdateStreamHost(s);
+        UpdateStreamHost(s, wait: true);
         if (_stream.Error != null)
         {
             _hints["tvwait"] = new Hint("tvwait", "error", "The TV stream could not start: " + _stream.Error);
@@ -684,6 +774,11 @@ public sealed class AppHost : IDisposable
         }
         _hints.Remove("nosignal");
         _hints.Remove("smoothmotion");
+        if (_devicesStale)
+        {
+            _devicesStale = false;
+            Task.Run(() => RefreshDevices());
+        }
         PushState();
     }
 
@@ -1056,6 +1151,8 @@ public sealed class AppHost : IDisposable
         _statsTimer?.Dispose();
         _hotkeys?.Dispose();
         StopPipeline();
+        try { _cameraWatcher?.Stop(); } catch { }
+        _deviceDebounce?.Dispose();
         _stream.Dispose();
         _audio.Dispose();
         _discord.Dispose();

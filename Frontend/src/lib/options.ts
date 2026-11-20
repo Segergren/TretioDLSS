@@ -1,6 +1,6 @@
 import { DropdownOption } from '../Components/Dropdown';
 import { AppWindow, FileVideo, Grid3x3, Monitor, Tv, Video, type LucideIcon } from 'lucide-react';
-import { AppState, CaptureFormat, EngineInfo, MonitorInfo } from '../Models/types';
+import { AppState, CaptureDevice, CaptureFormat, EngineInfo, MonitorInfo } from '../Models/types';
 
 /** Multiplier picker in each frame generation row: the current engine and multiplier, and how to pick one. */
 export interface MultiplierPick {
@@ -87,6 +87,23 @@ export function monitorDetail(m: MonitorInfo, withPrimary = true): string {
   return parts.join(', ');
 }
 
+/** What a video device is: software cameras are root-enumerated, capture cards do 1080p60 or more. */
+export function deviceKind(d: CaptureDevice): 'card' | 'camera' | 'virtual' {
+  if (/root#/i.test(d.id)) return 'virtual';
+  return d.formats.some((f) => f.width >= 1920 && f.height >= 1080 && f.fps >= 59) ? 'card' : 'camera';
+}
+
+export function deviceDetail(d: CaptureDevice): string {
+  const kind = deviceKind(d);
+  return kind === 'card' ? 'Capture card' : kind === 'virtual' ? 'Virtual camera' : 'Camera';
+}
+
+/** Capture cards first, then cameras, then software cameras. */
+export function sortedDevices(devices: CaptureDevice[]): CaptureDevice[] {
+  const rank = { card: 0, camera: 1, virtual: 2 } as const;
+  return [...devices].sort((a, b) => rank[deviceKind(a)] - rank[deviceKind(b)]);
+}
+
 export interface SourceChoice {
   value: string;
   label: string;
@@ -97,8 +114,8 @@ export interface SourceChoice {
 /** Every pickable source as one flat list: capture devices, windows, test pattern, file. */
 export function sourceChoices(state: AppState): SourceChoice[] {
   const list: SourceChoice[] = [];
-  for (const d of state.devices) {
-    list.push({ value: `uvc:${d.id}`, label: d.name, detail: 'Capture card', icon: Video });
+  for (const d of sortedDevices(state.devices)) {
+    list.push({ value: `uvc:${d.id}`, label: d.name, detail: deviceDetail(d), icon: Video });
   }
   const seen = new Set<string>();
   for (const w of state.windows) {
