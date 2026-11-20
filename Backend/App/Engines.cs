@@ -60,11 +60,11 @@ public static class EngineCatalog
             new("model", "Model", [new("low", "Low"), new("medium", "Medium"), new("high", "High")]),
         };
         if (!caps.Nvidia || !caps.Ada)
-            list.Add(new("vfx-vfg", "NVIDIA Frame Generation", false, "Needs an RTX 40 or 50 series GPU", "Needs an RTX 40 or 50 series GPU", [2, 3, 4], vfxModels));
+            list.Add(new("vfx-vfg", "NVIDIA Frame Generation", false, "Needs an RTX 40 or 50 series GPU", "Needs an RTX 40 or 50 series GPU", FrameGen.Multipliers("vfx-vfg"), vfxModels));
         else if (!VfxRuntime.HasFeature("vfx-vfg"))
-            list.Add(new("vfx-vfg", "NVIDIA Frame Generation", false, "Not downloaded", "Download it from NVIDIA", [2, 3, 4], vfxModels, VfxInstaller.State("vfx-vfg")));
+            list.Add(new("vfx-vfg", "NVIDIA Frame Generation", false, "Not downloaded", "Download it from NVIDIA", FrameGen.Multipliers("vfx-vfg"), vfxModels, VfxInstaller.State("vfx-vfg")));
         else
-            list.Add(new("vfx-vfg", "NVIDIA Frame Generation", true, Multipliers: [2, 3, 4], Options: vfxModels));
+            list.Add(new("vfx-vfg", "NVIDIA Frame Generation", true, Multipliers: FrameGen.Multipliers("vfx-vfg"), Options: vfxModels));
 
         if (!caps.Nvidia || !caps.Ada)
             list.Add(new("dlss-fg", "DLSS Frame Generation", false, "Needs an RTX 40 or 50 series GPU", "Needs an RTX 40 or 50 series GPU", [2, 3, 4]));

@@ -345,6 +345,16 @@ public class SafeModeTests
     }
 
     [Fact]
+    public void NvidiaFrameGenerationGoesUpToEightTimes()
+    {
+        var vfg = Assert.Single(EngineCatalog.FrameGenerators(new Capabilities { Nvidia = true }), e => e.Id == "vfx-vfg");
+        Assert.Equal([2, 3, 4, 5, 6, 7, 8], vfg.Multipliers);
+        Assert.Equal(8, FrameGen.ClampMultiplier("vfx-vfg", 12));
+        Assert.Equal(4, FrameGen.ClampMultiplier("dlss-fg", 8));
+        Assert.Equal(2, FrameGen.ClampMultiplier("amd-frc", 4));
+    }
+
+    [Fact]
     public void DlssFrameGenerationIsListedUpToFourTimes()
     {
         var dlss = Assert.Single(EngineCatalog.FrameGenerators(new Capabilities { Nvidia = true }), e => e.Id == "dlss-fg");

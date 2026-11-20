@@ -381,8 +381,8 @@ public sealed class AppHost : IDisposable
                 if (s.FrameGen.Model is not ("native" or "performance")) s.FrameGen.Model = "native";
                 s.FrameGen.Multiplier = 2;
             }
-            if (multiplier is int m) s.FrameGen.Multiplier = Math.Clamp(m, 2, 4);
-            else if (engine != "off" && s.FrameGen.Multiplier < 2) s.FrameGen.Multiplier = 2;
+            if (multiplier is int m) s.FrameGen.Multiplier = FrameGen.ClampMultiplier(engine, m);
+            else if (engine != "off") s.FrameGen.Multiplier = FrameGen.ClampMultiplier(engine, s.FrameGen.Multiplier);
         });
         PushState();
         if (_pipeline != null) RestartPipeline();

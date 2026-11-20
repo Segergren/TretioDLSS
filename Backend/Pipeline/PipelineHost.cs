@@ -236,6 +236,8 @@ public sealed class PipelineHost : IFrameSink, IDisposable
         public RenderTexture? Frame;
         public RenderTexture? Prev;
         public RenderTexture? Cur;
+        public RenderTexture? Out;
+        public bool First;
         public long ArrivalQpc;
         public double ClockMs;
     }
@@ -251,7 +253,6 @@ public sealed class PipelineHost : IFrameSink, IDisposable
         OutputWindow? window = null;
         IntPtr mmcss = IntPtr.Zero;
         var realRing = new RenderTexture?[3];
-        RenderTexture? genTex = null;
         RenderTexture? lastGpuFrame = null;
         var preview = new PreviewTap();
         var pending = new List<Slot>(16);
@@ -321,7 +322,7 @@ public sealed class PipelineHost : IFrameSink, IDisposable
             EffectiveUpscaler = upscaler.Id;
             compare = new ShaderUpscaler(g, "bilinear");
             generator = CreateGenerator(g, _cfg.FrameGen, _cfg.FrameGenModel, _cfg.Multiplier);
-            int n = generator == null ? 1 : generator is AmfFrameGenerator ? 2 : Math.Max(2, _cfg.Multiplier);
+            int n = generator == null ? 1 : FrameGen.ClampMultiplier(generator.Id, _cfg.Multiplier);
             if (generator != null)
             {
                 Array.Fill(_genCostMs, generator is BlendGenerator ? 0.1 : 2.0);
@@ -354,7 +355,7 @@ public sealed class PipelineHost : IFrameSink, IDisposable
                 long nextDue = long.MaxValue;
                 foreach (var ps in pending)
                 {
-                    long at = ps.Generated ? ps.DueQpc - _genLeadQpc : ps.DueQpc;
+                    long at = ps.Generated && ps.Out == null ? ps.DueQpc - _genLeadQpc : ps.DueQpc;
                     if (at < nextDue) nextDue = at;
                 }
                 if (nextDue == long.MaxValue) _mailbox.Signal.WaitOne(100);
@@ -447,6 +448,7 @@ public sealed class PipelineHost : IFrameSink, IDisposable
                             timer.BeginStage(1);
                             var active = _compareMode ? compare : upscaler;
                             active.Process(ingest, target);
+                            target.Stamp = realIndex + 1;
                             timer.EndStage();
                             if (upscaler.Status.Length > 0 && upscaler.Status != UpscalerStatus) UpscalerStatus = upscaler.Status;
 
@@ -463,7 +465,7 @@ public sealed class PipelineHost : IFrameSink, IDisposable
                                 }
                                 long nowQpc = Qpc.Now;
                                 foreach (var ps in pending) ps.DueQpc = nowQpc;
-                                PresentDue(pending, generator, timer, wait, ref genTex, g, preview, ref presentIndex, force: true);
+                                PresentDue(pending, generator, timer, wait, g, preview, ref presentIndex, force: true);
                             }
 
                             double readyMs = Qpc.ToMs(Qpc.Now);
@@ -479,6 +481,7 @@ public sealed class PipelineHost : IFrameSink, IDisposable
                                     gs.DueQpc = Qpc.FromMs(Schedule.SlotTime(clockMs, clock.PeriodMs, n, budgetMs, j));
                                     gs.Generated = true;
                                     gs.T = (float)j / n;
+                                    gs.First = j == 1;
                                     gs.RealIndex = realIndex;
                                     gs.Prev = prevReal;
                                     gs.Cur = target;
@@ -516,7 +519,8 @@ public sealed class PipelineHost : IFrameSink, IDisposable
                     }
                 }
 
-                PresentDue(pending, generator, timer, wait, ref genTex, g, preview, ref presentIndex, force: false);
+                PresentDue(pending, generator, timer, wait, g, preview, ref presentIndex, force: false);
+                if (generator != null) GenerateAhead(pending, generator, timer, g);
                 if (timing) timer.EndFrame();
 
                 if (!markerCleared && Environment.TickCount64 - runStartTick > SafeMode.StableMs)
@@ -557,7 +561,8 @@ public sealed class PipelineHost : IFrameSink, IDisposable
             try { _source?.Stop(); } catch (Exception ex) { Log.Warning(ex, "Source stop failed"); }
             _source?.Dispose();
             foreach (var t in realRing) t?.Dispose();
-            genTex?.Dispose();
+            foreach (var ps in pending) ps.Out?.Dispose();
+            while (_genPool.Count > 0) _genPool.Pop().Dispose();
             lastGpuFrame?.Dispose();
             preview.Dispose();
             generator?.Dispose();
@@ -622,30 +627,21 @@ public sealed class PipelineHost : IFrameSink, IDisposable
         _genLeadQpc = Qpc.FromMs(Math.Min(14, _genCostMs.Max() + 1.0));
     }
 
-    private void PresentDue(List<Slot> pending, IFrameGenerator? generator, GpuTimer timer, PreciseTimer wait, ref RenderTexture? genTex, GraphicsDevice g, PreviewTap preview, ref int presentIndex, bool force)
+    private void PresentDue(List<Slot> pending, IFrameGenerator? generator, GpuTimer timer, PreciseTimer wait, GraphicsDevice g, PreviewTap preview, ref int presentIndex, bool force)
     {
         while (pending.Count > 0)
         {
             int ni = 0;
             for (int k = 1; k < pending.Count; k++) if (pending[k].DueQpc < pending[ni].DueQpc) ni = k;
             var next = pending[ni];
-            long startAt = next.Generated && generator != null ? next.DueQpc - _genLeadQpc : next.DueQpc;
+            long startAt = next.Generated && generator != null && next.Out == null ? next.DueQpc - _genLeadQpc : next.DueQpc;
             if (!force && startAt > Qpc.Now + Qpc.FromMs(0.05)) break;
             pending.RemoveAt(ni);
             RenderTexture frame;
             if (next.Generated && generator != null && next.Prev != null && next.Cur != null)
             {
-                if (genTex == null || genTex.Width != next.Cur.Width || genTex.Height != next.Cur.Height)
-                {
-                    genTex?.Dispose();
-                    genTex = new RenderTexture(g.Device, next.Cur.Width, next.Cur.Height);
-                }
-                timer.BeginStage(2);
-                long genStart = Qpc.Now;
-                generator.Generate(next.Prev, next.Cur, next.T, genTex);
-                RecordGenCost(Qpc.ToMs(Qpc.Now - genStart));
-                timer.EndStage();
-                frame = genTex;
+                if (next.Out == null) GenerateSlot(next, generator, timer, g, critical: true);
+                frame = next.Out!;
                 Interlocked.Increment(ref Counters.Generated);
                 lock (GeneratedIndices) GeneratedIndices.Add(presentIndex);
             }
@@ -674,6 +670,60 @@ public sealed class PipelineHost : IFrameSink, IDisposable
         }
     }
 
+    // Generates the earliest pending frame ahead of its time unless a present is due before it could finish.
+    private void GenerateAhead(List<Slot> pending, IFrameGenerator generator, GpuTimer timer, GraphicsDevice g)
+    {
+        while (!_stop)
+        {
+            Slot? next = null;
+            long nextPresent = long.MaxValue;
+            foreach (var ps in pending)
+            {
+                if (ps.Generated && ps.Out == null)
+                {
+                    if (ps.Prev != null && ps.Cur != null && (next == null || ps.DueQpc < next.DueQpc)) next = ps;
+                }
+                else if (ps.DueQpc < nextPresent) nextPresent = ps.DueQpc;
+            }
+            if (next == null) return;
+            if (nextPresent < next.DueQpc && nextPresent - Qpc.Now < _genLeadQpc) return;
+            GenerateSlot(next, generator, timer, g, critical: next.First);
+        }
+    }
+
+    // Only frames on the critical path (generated just in time, or the first of an interval) set the lead.
+    private void GenerateSlot(Slot s, IFrameGenerator generator, GpuTimer timer, GraphicsDevice g, bool critical)
+    {
+        var tex = RentGenTexture(g, s.Cur!.Width, s.Cur.Height);
+        timer.BeginStage(2);
+        long genStart = Qpc.Now;
+        try
+        {
+            generator.Generate(s.Prev!, s.Cur, s.T, tex);
+        }
+        catch
+        {
+            _genPool.Push(tex);
+            throw;
+        }
+        if (critical) RecordGenCost(Qpc.ToMs(Qpc.Now - genStart));
+        timer.EndStage();
+        s.Out = tex;
+    }
+
+    private readonly Stack<RenderTexture> _genPool = new(8);
+
+    private RenderTexture RentGenTexture(GraphicsDevice g, int w, int h)
+    {
+        while (_genPool.Count > 0)
+        {
+            var t = _genPool.Pop();
+            if (t.Width == w && t.Height == h) return t;
+            t.Dispose();
+        }
+        return new RenderTexture(g.Device, w, h);
+    }
+
     private readonly Stack<Slot> _slotPool = new(16);
 
     private Slot RentSlot() => _slotPool.Count > 0 ? _slotPool.Pop() : new Slot();
@@ -681,8 +731,10 @@ public sealed class PipelineHost : IFrameSink, IDisposable
     private void ReturnSlot(Slot s)
     {
         s.Generated = false;
+        s.First = false;
         s.T = 0;
-        s.Frame = s.Prev = s.Cur = null;
+        if (s.Out != null) _genPool.Push(s.Out);
+        s.Frame = s.Prev = s.Cur = s.Out = null;
         _slotPool.Push(s);
     }
 

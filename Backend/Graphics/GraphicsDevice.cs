@@ -223,6 +223,9 @@ public sealed class RenderTexture : IDisposable
     public int Height { get; }
     public Format Format { get; }
 
+    /// <summary>Set by the pipeline to the real frame index the texture holds; 0 when unknown.</summary>
+    public long Stamp { get; set; }
+
     public RenderTexture(ID3D11Device device, int width, int height, Format format = Format.R8G8B8A8_UNorm, bool shared = false)
     {
         Width = width;

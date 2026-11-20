@@ -5,6 +5,21 @@ using Vortice.Mathematics;
 
 namespace TretioDLSS.Engines;
 
+public static class FrameGen
+{
+    /// <summary>Highest multiplier an engine supports.</summary>
+    public static int MaxMultiplier(string engine) => engine switch
+    {
+        "vfx-vfg" or "blend" => 8,
+        "amd-frc" => 2,
+        _ => 4,
+    };
+
+    public static int[] Multipliers(string engine) => Enumerable.Range(2, MaxMultiplier(engine) - 1).ToArray();
+
+    public static int ClampMultiplier(string engine, int multiplier) => Math.Clamp(multiplier, 2, MaxMultiplier(engine));
+}
+
 public interface IFrameGenerator : IDisposable
 {
     string Id { get; }

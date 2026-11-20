@@ -110,7 +110,7 @@ const state = {
       reason: 'Not downloaded',
       fixHint: 'Download it from NVIDIA',
       install: scenario === 'vfx' ? null : { state: 'none', progress: 0, bytes: 210_700_000 },
-      multipliers: [2, 3, 4],
+      multipliers: [2, 3, 4, 5, 6, 7, 8],
       options: [
         { key: 'model', label: 'Model', values: [{ value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' }] },
       ],

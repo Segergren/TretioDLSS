@@ -14,6 +14,7 @@ public sealed unsafe class VfxFrameGenerator : IFrameGenerator
     private ID3D11Texture2D? _texIn0, _texIn1, _texOut;
     private NvCVImage* _d3dIn0, _d3dIn1, _d3dOut, _buf0, _buf1, _bufOut, _tmp;
     private readonly List<double> _callMs = new();
+    private (IntPtr Tex, long Stamp) _key0, _key1;
 
     public string Id => "vfx-vfg";
     public bool LastWasCopy => false;
@@ -55,6 +56,7 @@ public sealed unsafe class VfxFrameGenerator : IFrameGenerator
         ReleaseImages();
         _w = w;
         _h = h;
+        _key0 = _key1 = default;
         var desc = new Texture2DDescription(Vortice.DXGI.Format.R8G8B8A8_UNorm, (uint)w, (uint)h, 1, 1, BindFlags.ShaderResource | BindFlags.RenderTarget);
         _texIn0 = _g.Device.CreateTexture2D(desc);
         _texIn1 = _g.Device.CreateTexture2D(desc);
@@ -99,34 +101,51 @@ public sealed unsafe class VfxFrameGenerator : IFrameGenerator
 
     private void GenerateCore(RenderTexture previous, RenderTexture current, float t, RenderTexture output)
     {
-        CopyIn(previous, _texIn0!);
-        CopyIn(current, _texIn1!);
-        _fx.Map(_d3dIn0);
-        _fx.Map(_d3dIn1);
+        if (output.Format != Vortice.DXGI.Format.R8G8B8A8_UNorm || output.Width != _w || output.Height != _h)
+            throw new InvalidOperationException($"Frame generation output must be {_w} x {_h} RGBA8");
+
+        // Inputs stay in the CUDA buffers: x2 uploads one new frame per pair, x3 and x4 none after the first.
+        var prevKey = Key(previous);
+        var curKey = Key(current);
+        if (prevKey.Stamp != 0 && _key1 == prevKey && _key0 != prevKey)
+        {
+            var b = _buf0;
+            _buf0 = _buf1;
+            _buf1 = b;
+            (_key0, _key1) = (_key1, _key0);
+        }
+        bool load0 = prevKey.Stamp == 0 || _key0 != prevKey;
+        bool load1 = curKey.Stamp == 0 || _key1 != curKey;
+        if (load0) CopyIn(previous, _texIn0!);
+        if (load1) CopyIn(current, _texIn1!);
+        if (load0) _fx.Map(_d3dIn0);
+        if (load1) _fx.Map(_d3dIn1);
         _fx.Map(_d3dOut);
         try
         {
-            _fx.Transfer(_d3dIn0, _buf0, _tmp);
-            _fx.Transfer(_d3dIn1, _buf1, _tmp);
-            // The SDK wants both inputs set again for every pair, even with unchanged buffers.
+            _key0 = _key1 = default;
+            if (load0) _fx.Transfer(_d3dIn0, _buf0, _tmp);
+            if (load1) _fx.Transfer(_d3dIn1, _buf1, _tmp);
+            // The SDK wants both inputs set again for every run, even with unchanged buffers.
             _fx.SetImage("SrcImage0", _buf0);
             _fx.SetImage("SrcImage1", _buf1);
             _fx.SetU32("ShotChange", 0);
             _fx.SetF32("Timestep", Math.Clamp(t, 0.001f, 0.999f));
             _fx.Run();
             _fx.Transfer(_bufOut, _d3dOut, _tmp);
+            _key0 = prevKey;
+            _key1 = curKey;
         }
         finally
         {
             _fx.Unmap(_d3dOut);
-            _fx.Unmap(_d3dIn1);
-            _fx.Unmap(_d3dIn0);
+            if (load1) _fx.Unmap(_d3dIn1);
+            if (load0) _fx.Unmap(_d3dIn0);
         }
-
-        if (output.Format != Vortice.DXGI.Format.R8G8B8A8_UNorm || output.Width != _w || output.Height != _h)
-            throw new InvalidOperationException($"Frame generation output must be {_w} x {_h} RGBA8");
         _g.Context.CopyResource(output.Texture, _texOut!);
     }
+
+    private static (IntPtr Tex, long Stamp) Key(RenderTexture r) => (r.Texture.NativePointer, r.Stamp);
 
     private void CopyIn(RenderTexture src, ID3D11Texture2D dst)
     {
@@ -134,7 +153,7 @@ public sealed unsafe class VfxFrameGenerator : IFrameGenerator
         _g.Context.CopyResource(dst, src.Texture);
     }
 
-    public void Reset() { }
+    public void Reset() => _key0 = _key1 = default;
 
     private void ReleaseImages()
     {
