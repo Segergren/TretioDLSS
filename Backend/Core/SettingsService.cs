@@ -91,6 +91,9 @@ public sealed class SettingsService
         if (n.Style is not ("default" or "natural" or "cinematic")) n.Style = "default";
         if (n.Model is not ("fast" or "original")) n.Model = "fast";
         if (n.Placement is not ("source" or "output")) n.Placement = "source";
+        // The old default title gives way to the game's name.
+        foreach (var d in s.Profiles.Select(p => p.Display).Append(s.Display))
+            if (d.WindowTitle == "TretioDLSS output") d.WindowTitle = "";
         var h = s.Display.Hdr;
         h.PaperWhite = Math.Clamp(h.PaperWhite, 80, 500);
         h.Expand = Math.Clamp(h.Expand, 0, 1);

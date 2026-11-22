@@ -46,7 +46,7 @@ export interface Settings {
     stageOrder: StageOrder;
     options: Record<string, unknown>;
   };
-  display: { monitorId: string; mode: DisplayMode; sync: SyncMode; pacing: PacingMode; overlay: boolean; windowTitle: string; hdr: HdrSettings };
+  display: { monitorId: string; mode: DisplayMode; sync: SyncMode; pacing: PacingMode; overlay: boolean; windowTitle: string; gameIcon: boolean; gameProcess: boolean; hdr: HdrSettings };
   tv: { mode: TvMode };
   audio: { inputId: string; outputId: string; volume: number; offsetMs: number; autoSync: boolean };
   hotkeys: {

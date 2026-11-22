@@ -28,6 +28,13 @@ public static class WindowIdentity
     public static void SetName(IntPtr hwnd, string name) =>
         Apply(hwnd, store => SetString(store, PidRelaunchName, name));
 
+    /// <summary>Moves the window to the taskbar group <paramref name="id"/>, whose button shows this .ico (the app's icon when null).</summary>
+    public static void SetGroup(IntPtr hwnd, string id, string? icoPath) => Apply(hwnd, store =>
+    {
+        SetString(store, PidRelaunchIcon, $"{icoPath ?? Environment.ProcessPath},0");
+        SetString(store, PidId, id);
+    });
+
     public static void Clear(IntPtr hwnd) => Apply(hwnd, store =>
     {
         foreach (var pid in new[] { PidRelaunchName, PidRelaunchIcon, PidRelaunchCommand, PidId })

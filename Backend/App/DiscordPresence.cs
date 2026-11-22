@@ -3,6 +3,7 @@ using System.Text.Json;
 using DiscordRPC;
 using Serilog;
 using TretioDLSS.Core;
+using TretioDLSS.Platform;
 
 namespace TretioDLSS.App;
 
@@ -57,6 +58,7 @@ public sealed class DiscordPresence : IDisposable
     private static readonly TimeSpan CacheAge = TimeSpan.FromDays(3);
     private static string CacheFile => Path.Combine(AppInfo.DataFolder, "discord-games.json");
     private static string SessionFile => Path.Combine(AppInfo.DataFolder, "discord-session.json");
+    private static string IconFolder => Path.Combine(AppInfo.DataFolder, "icons");
 
     private readonly object _gate = new();
     private DiscordRpcClient? _client;
@@ -68,7 +70,12 @@ public sealed class DiscordPresence : IDisposable
     private Dictionary<string, (string Id, string Name)>? _games;
     private List<GameEntry>? _list;
 
-    public sealed record GameEntry(string Id, string Name, string Icon, string Key);
+    public sealed record GameEntry(string Id, string Name, string IconHash, string Key, string Exe = "")
+    {
+        public string Icon => IconHash.Length == 0 ? "" : IconUrl(Id, IconHash, 64);
+    }
+
+    private static string IconUrl(string id, string hash, int size) => $"https://cdn.discordapp.com/app-icons/{id}/{hash}.png?size={size}";
 
     private string _status = "";
 
@@ -171,14 +178,62 @@ public sealed class DiscordPresence : IDisposable
             .Select(g => (g, rank: g.Key == key ? 0 : g.Key.StartsWith(key, StringComparison.Ordinal) ? 1 : g.Key.Contains(key, StringComparison.Ordinal) ? 2
                 : words.All(w => g.Name.Contains(w, StringComparison.OrdinalIgnoreCase)) ? 3 : 9))
             .Where(x => x.rank < 9)
-            .OrderBy(x => x.rank).ThenBy(x => x.g.Icon.Length == 0).ThenBy(x => x.g.Name.Length)
+            .OrderBy(x => x.rank).ThenBy(x => x.g.IconHash.Length == 0).ThenBy(x => x.g.Name.Length)
             .Take(max).Select(x => x.g).ToList();
+    }
+
+    /// <summary>The game's Discord icon as an .ico in the data folder, fetched once; null when Discord has none.</summary>
+    public async Task<string?> GameIcon(string game)
+    {
+        try
+        {
+            var hit = await Find(game);
+            var entry = hit == null ? null : _list?.FirstOrDefault(g => g.Id == hit.Value.Id);
+            if (entry == null || entry.IconHash.Length == 0)
+            {
+                Log.Information("Discord has no icon for {Game}", game);
+                return null;
+            }
+            string path = Path.Combine(IconFolder, $"{entry.Id}-{entry.IconHash}.ico");
+            if (File.Exists(path)) return path;
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd(AppInfo.Name + "/" + AppInfo.Version);
+            byte[] png = await http.GetByteArrayAsync(IconUrl(entry.Id, entry.IconHash, 256));
+            Directory.CreateDirectory(IconFolder);
+            string temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            await File.WriteAllBytesAsync(temp, IconFile.FromImage(png));
+            File.Move(temp, path, overwrite: true);
+            Log.Information("Icon for {Game} saved to {Path}", entry.Name, path);
+            return path;
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Icon for {Game} unavailable", game);
+            return null;
+        }
+    }
+
+    /// <summary>The Windows exe Discord expects for the game, as a path like "folder/game.exe"; null when it lists none.</summary>
+    public async Task<string?> DiscordExe(string game)
+    {
+        try
+        {
+            var hit = await Find(game);
+            var entry = hit == null ? null : _list?.FirstOrDefault(g => g.Id == hit.Value.Id);
+            return string.IsNullOrEmpty(entry?.Exe) ? null : entry.Exe;
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Discord's exe for {Game} unavailable", game);
+            return null;
+        }
     }
 
     private async Task<(string Id, string Name)?> Find(string name)
     {
-        if (_games == null) (_games, _list) = await Load();
         var key = Normalize(name);
+        if (key.Length == 0) return null;
+        if (_games == null) (_games, _list) = await Load();
         if (_games.TryGetValue(key, out var hit)) return hit;
         var partial = _games.Where(g => g.Key.StartsWith(key, StringComparison.Ordinal)).OrderBy(g => g.Key.Length).FirstOrDefault();
         return partial.Value.Id == null ? null : partial.Value;
@@ -214,9 +269,17 @@ public sealed class DiscordPresence : IDisposable
             if (!app.TryGetProperty("id", out var id) || !app.TryGetProperty("name", out var n)) continue;
             var entry = (id.GetString()!, n.GetString()!);
             map.TryAdd(Normalize(entry.Item2), entry);
-            string icon = app.TryGetProperty("icon_hash", out var ih) && ih.GetString() is string h && h.Length > 0
-                ? $"https://cdn.discordapp.com/app-icons/{entry.Item1}/{h}.png?size=64" : "";
-            list.Add(new GameEntry(entry.Item1, entry.Item2, icon, Normalize(entry.Item2)));
+            string hash = app.TryGetProperty("icon_hash", out var ih) ? ih.GetString() ?? "" : "";
+            string exe = "";
+            if (app.TryGetProperty("executables", out var exes) && exes.ValueKind == JsonValueKind.Array)
+                foreach (var x in exes.EnumerateArray())
+                    if (x.TryGetProperty("os", out var os) && os.GetString() == "win32" && x.TryGetProperty("name", out var xn)
+                        && !(x.TryGetProperty("is_launcher", out var l) && l.ValueKind == JsonValueKind.True))
+                    {
+                        exe = xn.GetString() ?? "";
+                        break;
+                    }
+            list.Add(new GameEntry(entry.Item1, entry.Item2, hash, Normalize(entry.Item2), exe));
             if (app.TryGetProperty("aliases", out var aliases) && aliases.ValueKind == JsonValueKind.Array)
                 foreach (var a in aliases.EnumerateArray())
                     if (a.GetString() is string alias) map.TryAdd(Normalize(alias), entry);

@@ -25,6 +25,8 @@ public sealed class CommandLine
     public (int Index, string Path)? DumpFrame { get; private set; }
     public (int From, int To, string Dir)? DumpFrames { get; private set; }
     public string? PatternWindow { get; private set; }
+    /// <summary>Runs the picture for the app over this pipe (the game-named exe).</summary>
+    public string? PipelineHost { get; private set; }
     public bool Start { get; private set; }
     public bool Stop { get; private set; }
     public bool Exit { get; private set; }
@@ -56,7 +58,7 @@ public sealed class CommandLine
     public bool TvScan { get; private set; }
     public List<string> Unknown { get; } = new();
 
-    public bool IsToolMode => Headless || StreamHostSeconds > 0 || TvScan || PatternWindow != null || CaptureInfo || RecordRaw != null || LatencyTest || Install != null;
+    public bool IsToolMode => PipelineHost != null || Headless || StreamHostSeconds > 0 || TvScan || PatternWindow != null || CaptureInfo || RecordRaw != null || LatencyTest || Install != null;
 
     /// <summary>Paths are relative to where the user started the exe; the app changes its directory later.</summary>
     private void ResolvePaths()
@@ -92,6 +94,7 @@ public sealed class CommandLine
             switch (a)
             {
                 case "--headless": c.Headless = true; break;
+                case "--pipeline-host": c.PipelineHost = Next(); break;
                 case "--source": c.Source = Next(); break;
                 case "--upscale": c.Upscale = Next(); break;
                 case "--vsr-quality": c.UpscaleQuality = Next(); break;

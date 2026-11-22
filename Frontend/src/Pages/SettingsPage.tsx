@@ -396,8 +396,24 @@ export function SettingsPage({ section }: { section: string | null }) {
           <OptionRow label="Stats overlay" helper={`Toggle while playing with ${s.hotkeys.toggleOverlay}`}>
             <Toggle label="Stats overlay" checked={s.display.overlay} onChange={(overlay) => update({ display: { overlay } })} />
           </OptionRow>
-          <OptionRow label="Window title" helper="The output window's name, as other apps see it while the picture runs">
-            <TextInput label="Window title" className="w-72" value={s.display.windowTitle} placeholder="TretioDLSS output" onCommit={(windowTitle) => update({ display: { windowTitle } })} />
+          <OptionRow label="Window title" helper="The output window's name, as other apps see it. Empty uses the Discord game's name">
+            <TextInput label="Window title" className="w-72" value={s.display.windowTitle} placeholder={s.discord.game.trim() || 'TretioDLSS output'} onCommit={(windowTitle) => update({ display: { windowTitle } })} />
+          </OptionRow>
+          <OptionRow
+            label="Game icon"
+            helper={s.discord.game.trim() ? `The output window and its taskbar button show the icon of ${s.discord.game.trim()}` : 'Set a Discord game to use its icon'}
+          >
+            <Toggle label="Game icon" checked={s.display.gameIcon} onChange={(gameIcon) => update({ display: { gameIcon } })} />
+          </OptionRow>
+          <OptionRow
+            label="Run as the game"
+            helper={
+              s.discord.game.trim()
+                ? `The picture runs in its own process named after ${s.discord.game.trim()}, so Task Manager, Discord and other apps see the game`
+                : 'Set a Discord game to run the picture under its name'
+            }
+          >
+            <Toggle label="Run as the game" checked={s.display.gameProcess} onChange={(gameProcess) => update({ display: { gameProcess } })} />
           </OptionRow>
           <OptionRow label="HDR" helper={hdrHelper(state.monitors.find((m) => m.id === s.display.monitorId)?.hdr)}>
             <Dropdown
@@ -511,7 +527,7 @@ export function SettingsPage({ section }: { section: string | null }) {
           >
             <Toggle label="Discord status" checked={s.discord.enabled} onChange={(enabled) => update({ discord: { enabled } })} />
           </OptionRow>
-          <OptionRow label="Discord game" helper="The game's name as Discord lists it">
+          <OptionRow label="Discord game" helper="The game's name as Discord lists it. The game icon comes from here too">
             <GamePicker className="w-72" value={s.discord.game} onChange={(game) => update({ discord: { game } })} />
           </OptionRow>
           <OptionRow label="Updates" helper={state.update?.status || 'Not checked yet'}>

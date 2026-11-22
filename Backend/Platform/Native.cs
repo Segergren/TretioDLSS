@@ -24,6 +24,9 @@ internal static partial class Native
     public const uint WM_HOTKEY = 0x0312;
     public const uint WM_USER = 0x0400;
     public const uint WM_QUIT = 0x0012;
+    public const uint WM_SETICON = 0x0080;
+    public static readonly IntPtr ICON_SMALL = 0, ICON_BIG = 1;
+    public const int SM_CXICON = 11, SM_CXSMICON = 49;
     public const int MA_NOACTIVATE = 3;
     public const int SW_SHOW = 5;
     public const int SW_HIDE = 0;
@@ -126,6 +129,15 @@ internal static partial class Native
 
     [DllImport("user32.dll")]
     public static extern void PostQuitMessage(int code);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    public static extern uint GetDpiForWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern int GetSystemMetricsForDpi(int index, uint dpi);
 
     [DllImport("user32.dll")]
     public static extern IntPtr LoadCursor(IntPtr instance, IntPtr name);

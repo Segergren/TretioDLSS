@@ -107,7 +107,12 @@ public sealed class DisplaySettings
     public string Sync { get; set; } = "auto";
     public string Pacing { get; set; } = "auto";
     public bool Overlay { get; set; }
-    public string WindowTitle { get; set; } = "TretioDLSS output";
+    /// <summary>Empty uses the Discord game's name.</summary>
+    public string WindowTitle { get; set; } = "";
+    /// <summary>The output window shows the Discord game's icon instead of the app's.</summary>
+    public bool GameIcon { get; set; } = true;
+    /// <summary>The picture runs in a copy of the app named after the game, so other programs see the game running.</summary>
+    public bool GameProcess { get; set; } = true;
     public HdrSettings Hdr { get; set; } = new();
 }
 

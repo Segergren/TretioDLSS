@@ -20,7 +20,7 @@ public enum PipelineStatus
 /// <summary>
 /// Owns the pipeline thread: source handoff, cadence, upscale, frame generation, pacing, present.
 /// </summary>
-public sealed class PipelineHost : IFrameSink, IDisposable
+public sealed class PipelineHost : IFrameSink, IPipeline
 {
     private readonly PipelineConfig _cfg;
     private Thread? _thread;
@@ -129,11 +129,25 @@ public sealed class PipelineHost : IFrameSink, IDisposable
     }
 
     public NeuralConfig NeuralConfig => _neuralCfg;
+    public bool HasNeuralStage => _neural != null;
+    public bool NeuralRuntimeMissing => _neuralRuntimeMissing;
+    public double StageMean(int stage) => Stages.RecentMean(stage);
+    public bool SmoothMotionActive => Nvidia.SmoothMotion.PresentLayerLoaded();
+    public string ExeName => Path.GetFileName(Environment.ProcessPath) ?? "TretioDLSS.exe";
     public string NeuralStatus => _neural?.Status ?? (_neuralCfg.Enabled ? "Not available" : "Off");
 
     public void SetOverlay(bool visible) => _overlayVisible = visible;
 
     private IntPtr _windowHandle;
+    private OutputWindow? _window;
+    private volatile string? _windowIcon;
+
+    /// <summary>The .ico the output window shows; null keeps the app's icon.</summary>
+    public void SetWindowIcon(string? path)
+    {
+        _windowIcon = path;
+        _window?.SetIcon(path);
+    }
 
     public void SetWindowTitle(string title)
     {
@@ -320,8 +334,11 @@ public sealed class PipelineHost : IFrameSink, IDisposable
             }
             else if (_cfg.Monitor != null)
             {
-                window = new OutputWindow(_cfg.Monitor, _cfg.Borderless, _cfg.NoActivate, _cfg.WindowTitle);
+                string? icon = _windowIcon;
+                window = new OutputWindow(_cfg.Monitor, _cfg.Borderless, _cfg.NoActivate, _cfg.WindowTitle, icon);
                 _windowHandle = window.Handle;
+                _window = window;
+                if (_windowIcon != icon) window.SetIcon(_windowIcon);
                 window.CloseRequested += () => { _stop = true; _mailbox.Signal.Set(); };
                 window.EscapePressed += () => { if (!_cfg.NoActivate) { _stop = true; _mailbox.Signal.Set(); } };
                 var sc = new SwapChainSink(g, window, _cfg.Sync, _cfg.Monitor.Refresh, _cfg.Hdr, _cfg.Monitor.Hdr);
@@ -685,6 +702,7 @@ public sealed class PipelineHost : IFrameSink, IDisposable
             }
             _sink?.Dispose();
             _overlay?.Dispose();
+            _window = null;
             window?.Dispose();
             timer?.Dispose();
             gpuDiff?.Dispose();

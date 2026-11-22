@@ -27,7 +27,7 @@ public sealed class AppHost : IDisposable
     private List<WindowEntry> _windows = new();
     private List<MonitorInfo> _monitors = new();
     private List<AudioDevice> _audioIn = new(), _audioOut = new();
-    private PipelineHost? _pipeline;
+    private IPipeline? _pipeline;
     private readonly AudioBridge _audio = new();
     private readonly object _pipelineGate = new();
     private Timer? _statsTimer;
@@ -72,6 +72,7 @@ public sealed class AppHost : IDisposable
     {
         VfxRuntime.ConfiguredPath = Settings.Current.Advanced.VfxRuntimePath;
         RefreshDevices(quiet: true);
+        UpdateGameIcon(Settings.Current);
         UpdateStreamHost(Settings.Current);
         Task.Run(ScanTvs);
         WatchCaptureDevices();
@@ -412,13 +413,78 @@ public sealed class AppHost : IDisposable
             p.SetSharpness(s.Upscale.Sharpness);
             p.SetHdrLook(HdrLook(s));
             p.SetOverlay(s.Display.Overlay);
-            p.SetWindowTitle(string.IsNullOrWhiteSpace(s.Display.WindowTitle) ? "TretioDLSS output" : s.Display.WindowTitle.Trim());
+            p.SetWindowTitle(WindowTitle(s));
         }
         _audio.SetVolume(s.Audio.Volume);
         UpdateStreamHost(s);
         RegisterHotkeys();
         _discord.Update(s.Discord, _pipeline != null);
+        UpdateGameIcon(s);
         if (restart) Task.Run(RestartPipeline);
+    }
+
+    /// <summary>The Window title setting, else the Discord game's name.</summary>
+    private static string WindowTitle(Settings s) =>
+        s.Display.WindowTitle.Trim() is { Length: > 0 } t ? t : s.Discord.Game.Trim() is { Length: > 0 } g ? g : "TretioDLSS output";
+
+    private readonly object _gameLock = new();
+    private string _game = "";
+    private string? _gameIcon;
+    private string? _gameExe;
+
+    /// <summary>Looks up the Discord game's icon and exe when the game changes, and keeps the window icon current.</summary>
+    private void UpdateGameIcon(Settings s)
+    {
+        string game = s.Discord.Game.Trim();
+        bool changed;
+        lock (_gameLock)
+        {
+            changed = game != _game;
+            if (changed)
+            {
+                _game = game;
+                _gameIcon = null;
+                _gameExe = game.Length > 0 ? GameExe.RelativePath(game, null) : null;
+            }
+        }
+        _pipeline?.SetWindowIcon(GameIconPath(s));
+        if (!changed || game.Length == 0) return;
+        Task.Run(async () =>
+        {
+            string? icon = await _discord.GameIcon(game);
+            string? exe = await _discord.DiscordExe(game);
+            lock (_gameLock)
+            {
+                if (game != _game) return;
+                _gameIcon = icon;
+                _gameExe = GameExe.RelativePath(game, exe);
+            }
+            _pipeline?.SetWindowIcon(GameIconPath(Settings.Current));
+        });
+    }
+
+    private string? GameIconPath(Settings s)
+    {
+        lock (_gameLock) return s.Display.GameIcon ? _gameIcon : null;
+    }
+
+    /// <summary>The picture in the game-named exe when that is on and the exe can be written, else in this process.</summary>
+    private IPipeline CreatePipeline(PipelineConfig cfg, Settings s)
+    {
+        if (!s.Display.GameProcess) return new PipelineHost(cfg);
+        string? rel, icon;
+        lock (_gameLock) (rel, icon) = (_gameExe, _gameIcon);
+        if (rel == null) return new PipelineHost(cfg);
+        try
+        {
+            string exe = GameExe.Prepare(rel, s.Discord.Game.Trim(), icon);
+            return new RemotePipeline(exe, new StartRequest(s, _devices, Caps.Tearing, GameIconPath(s), _previewActive ? 30 : 0));
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Game exe {Exe} not written; the picture runs in TretioDLSS", rel);
+            return new PipelineHost(cfg);
+        }
     }
 
     private void SelectProfile(string name)
@@ -479,16 +545,20 @@ public sealed class AppHost : IDisposable
                 PushState();
                 return;
             }
-            var host = new PipelineHost(cfg);
-            host.StatusChanged += () =>
+            IPipeline Wire(IPipeline h)
             {
-                // Esc or the output window's close button ended it: stop like the Stop button does.
-                if (host.Status == PipelineStatus.Idle && _pipeline == host) Task.Run(StopPipeline);
-                PushState();
-            };
-            host.Preview += jpeg => _ = Messages.Send("Preview", Convert.ToBase64String(jpeg));
-            host.SetPreviewFps(_previewActive ? 30 : 0);
-            _pipeline = host;
+                h.StatusChanged += () =>
+                {
+                    // Esc or the output window's close button ended it: stop like the Stop button does.
+                    if (h.Status == PipelineStatus.Idle && _pipeline == h) Task.Run(StopPipeline);
+                    PushState();
+                };
+                h.Preview += jpeg => _ = Messages.Send("Preview", Convert.ToBase64String(jpeg));
+                h.SetPreviewFps(_previewActive ? 30 : 0);
+                h.SetWindowIcon(GameIconPath(s));
+                return _pipeline = h;
+            }
+            var host = Wire(CreatePipeline(cfg, s));
             _lastSource = _lastReal = _lastPresented = 0;
             _rateWindow.Clear();
             _histReal.Clear();
@@ -498,7 +568,17 @@ public sealed class AppHost : IDisposable
             PushState();
             try
             {
-                host.Start();
+                try
+                {
+                    host.Start();
+                }
+                catch (GameProcessException ex)
+                {
+                    Log.Warning(ex, "The game exe failed; running the picture in TretioDLSS");
+                    host.Dispose();
+                    host = Wire(new PipelineHost(cfg));
+                    host.Start();
+                }
             }
             catch (Exception ex)
             {
@@ -513,10 +593,10 @@ public sealed class AppHost : IDisposable
             StartAudio(s);
             Task.Delay(2500).ContinueWith(_ =>
             {
-                if (_pipeline != null && SmoothMotion.PresentLayerLoaded())
+                if (_pipeline is { SmoothMotionActive: true } sm)
                 {
                     Log.Warning("The driver's Smooth Motion is active in this process");
-                    _hints["smoothmotion"] = new Hint("smoothmotion", "warning", "NVIDIA Smooth Motion is turned on for TretioDLSS.exe in the NVIDIA app, so the driver adds frames on top of the app's. Turn it off there.");
+                    _hints["smoothmotion"] = new Hint("smoothmotion", "warning", $"NVIDIA Smooth Motion is turned on for {sm.ExeName} in the NVIDIA app, so the driver adds frames on top of the app's. Turn it off there.");
                     PushState();
                 }
             });
@@ -766,7 +846,7 @@ public sealed class AppHost : IDisposable
         }
         _hints.Remove("tvwait");
         _tvWaiting = false;
-        PipelineHost? p;
+        IPipeline? p;
         lock (_pipelineGate)
         {
             p = _pipeline;
@@ -811,17 +891,21 @@ public sealed class AppHost : IDisposable
     internal static NeuralConfig NeuralFrom(NeuralSettings n) =>
         NeuralConfig.From(n.Engine, n.Layers, n.Style, n.Intensity, n.Model, n.Placement);
 
-    private PipelineConfig BuildConfig(Settings s, Func<Graphics.GraphicsDevice, OutputSink>? sinkFactory = null)
+    private PipelineConfig BuildConfig(Settings s, Func<Graphics.GraphicsDevice, OutputSink>? sinkFactory = null) =>
+        BuildConfig(s, _devices, _monitors, Caps.Tearing, sinkFactory);
+
+    internal static PipelineConfig BuildConfig(Settings s, List<CaptureDevice> devices, List<MonitorInfo> monitors, bool tearing,
+        Func<Graphics.GraphicsDevice, OutputSink>? sinkFactory = null)
     {
-        var monitor = sinkFactory != null ? null : Monitors.Find(_monitors, s.Display.MonitorId) ?? throw new InvalidOperationException("No display found");
-        var source = SourceFactory.FromSettings(s.Source, _devices);
+        var monitor = sinkFactory != null ? null : Monitors.Find(monitors, s.Display.MonitorId) ?? throw new InvalidOperationException("No display found");
+        var source = SourceFactory.FromSettings(s.Source, devices);
         string fg = s.FrameGen.Engine;
         var sync = s.Display.Sync switch
         {
             "vsync" => SyncMode.Vsync,
             "tearing" => SyncMode.Tearing,
             "vrr" => SyncMode.Vrr,
-            _ => monitor?.Vrr == true && Caps.Tearing ? SyncMode.Vrr : SyncMode.Vsync,
+            _ => monitor?.Vrr == true && tearing ? SyncMode.Vrr : SyncMode.Vsync,
         };
         var pacing = s.Display.Pacing switch
         {
@@ -851,7 +935,7 @@ public sealed class AppHost : IDisposable
             SinkFactory = sinkFactory,
             Borderless = s.Display.Mode != "windowed",
             NoActivate = s.Source.Kind == "window",
-            WindowTitle = string.IsNullOrWhiteSpace(s.Display.WindowTitle) ? "TretioDLSS output" : s.Display.WindowTitle.Trim(),
+            WindowTitle = WindowTitle(s),
             TrimBlackBars = s.Source.Kind == "window",
             Hdr = s.Display.Hdr.Mode == "off" || sinkFactory != null ? null : HdrLook(s),
             LossySource = s.Source.Kind == "window" || s.Source.Subtype == "MJPG",
@@ -932,7 +1016,7 @@ public sealed class AppHost : IDisposable
             : $"{info.Width} x {info.Height}, {Math.Round(sourceFps)} fps";
         if (p.CadenceState == CadenceState.Unlocked && info != null) sourceDetail = $"Cadence unlocked, {Math.Round(info.ContainerHz)} Hz";
         var (cw, ch) = p.ContentSize;
-        double upMs = p.Stages.RecentMean(1);
+        double upMs = p.StageMean(1);
         string upDetail = info == null ? "" : $"{info.Height}p to {ch}p, {upMs:0.0} ms";
         if (p.CompareMode) upDetail = "Comparing with bilinear";
         else if (SafeMode.IsDisabled(s.Upscale.Engine)) upDetail = SafeMode.ShortMessage;
@@ -955,7 +1039,7 @@ public sealed class AppHost : IDisposable
             outputEstimated = false,
             addedDelayMs = p.MedianDelayMs(),
             delayNotMeasured = false,
-            gpuPercent = Math.Min(100, (p.Stages.RecentMean(0) + p.Stages.RecentMean(1) + p.Stages.RecentMean(3) + p.Stages.RecentMean(PipelineHost.NeuralStage)) * realFps / 10 + p.Stages.RecentMean(2) * genFps / 10),
+            gpuPercent = Math.Min(100, (p.StageMean(0) + p.StageMean(1) + p.StageMean(3) + p.StageMean(PipelineHost.NeuralStage)) * realFps / 10 + p.StageMean(2) * genFps / 10),
             dropped = Interlocked.Read(ref c.Dropped),
             late = Interlocked.Read(ref c.Late),
             cadence,
@@ -969,7 +1053,7 @@ public sealed class AppHost : IDisposable
         });
     }
 
-    private void UpdateNoSignal(PipelineHost p, double sourceFps)
+    private void UpdateNoSignal(IPipeline p, double sourceFps)
     {
         // Black from the start for 2 s, or no frames at all for 2 s: the cable and HDCP hint.
         if (sourceFps < 0.5) _blackFrames++;
@@ -994,7 +1078,7 @@ public sealed class AppHost : IDisposable
         while (q.Count > 40) q.Dequeue();
     }
 
-    private void CheckPipelineEnded(PipelineHost? p)
+    private void CheckPipelineEnded(IPipeline? p)
     {
         if (p != null && p.Status == PipelineStatus.Faulted && _lastStatus != PipelineStatus.Faulted)
         {

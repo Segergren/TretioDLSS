@@ -13,6 +13,7 @@ namespace TretioDLSS.Output;
 public sealed class OutputWindow : IDisposable
 {
     private const string ClassName = "TretioDLSSOutput";
+    private const string TaskbarId = "TretioDLSS.Output";
     private static WndProc? _proc;
     private static bool _registered;
 
@@ -22,6 +23,8 @@ public sealed class OutputWindow : IDisposable
     private uint _threadId;
     private long _lastMouseMove;
     private bool _cursorHidden;
+    private volatile string? _iconPath;
+    private IntPtr _iconBig, _iconSmall;
 
     public IntPtr Handle => _hwnd;
     public int Width { get; private set; }
@@ -32,9 +35,10 @@ public sealed class OutputWindow : IDisposable
 
     private static readonly Dictionary<IntPtr, OutputWindow> Windows = new();
 
-    public OutputWindow(MonitorInfo monitor, bool borderless, bool noActivate, string title)
+    public OutputWindow(MonitorInfo monitor, bool borderless, bool noActivate, string title, string? icon = null)
     {
         NoActivate = noActivate;
+        _iconPath = icon;
         _thread = new Thread(() => Run(monitor, borderless, noActivate, title)) { IsBackground = true, Name = "OutputWindow" };
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
@@ -72,7 +76,8 @@ public sealed class OutputWindow : IDisposable
                 return;
             }
             lock (Windows) Windows[_hwnd] = this;
-            WindowIdentity.Set(_hwnd, "TretioDLSS.Output", title);
+            WindowIdentity.Set(_hwnd, TaskbarId, title);
+            ApplyIcon(_hwnd);
             _threadId = GetCurrentThreadId();
             int dark = 1;
             DwmSetWindowAttribute(_hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, 4);
@@ -101,7 +106,8 @@ public sealed class OutputWindow : IDisposable
                 }
                 MsgWaitForMultipleObjects(0, IntPtr.Zero, false, 250, 0x04FF);
             }
-        done:;
+        done:
+            DestroyIcons();
         }
         catch (Exception ex)
         {
@@ -112,6 +118,56 @@ public sealed class OutputWindow : IDisposable
 
     [DllImport("user32.dll")]
     private static extern uint MsgWaitForMultipleObjects(uint count, IntPtr handles, bool waitAll, uint ms, uint mask);
+
+    /// <summary>Shows this .ico in the title bar, the taskbar and Alt+Tab; null goes back to the app's icon.</summary>
+    public void SetIcon(string? path)
+    {
+        if (path == _iconPath) return;
+        _iconPath = path;
+        var h = _hwnd;
+        if (h != IntPtr.Zero) PostMessage(h, WM_USER + 2, IntPtr.Zero, IntPtr.Zero);
+    }
+
+    private static string AppIcon => Path.Combine(AppContext.BaseDirectory, "Resources", "icon.ico");
+
+    private void ApplyIcon(IntPtr hwnd)
+    {
+        string? path = _iconPath;
+        var (big, small) = path != null ? LoadIcons(hwnd, path) : (IntPtr.Zero, IntPtr.Zero);
+        if (big == IntPtr.Zero)
+        {
+            if (path != null) Log.Warning("Window icon {Path} did not load (error {Err})", path, Marshal.GetLastWin32Error());
+            path = null;
+            (big, small) = LoadIcons(hwnd, AppIcon);
+        }
+        SendMessage(hwnd, WM_SETICON, ICON_BIG, big);
+        SendMessage(hwnd, WM_SETICON, ICON_SMALL, small);
+        // The taskbar reads a button's icon once per ID, so each icon gets its own ID.
+        string id = path == null ? TaskbarId : TaskbarId + "." + new string(Path.GetFileNameWithoutExtension(path).Where(char.IsAsciiLetterOrDigit).Take(64).ToArray());
+        WindowIdentity.SetGroup(hwnd, id, path);
+        DestroyIcons();
+        (_iconBig, _iconSmall) = (big, small);
+        Log.Information("Output window icon: {Icon}", path ?? "app");
+    }
+
+    private static (IntPtr Big, IntPtr Small) LoadIcons(IntPtr hwnd, string path)
+    {
+        uint dpi = GetDpiForWindow(hwnd);
+        if (dpi == 0) dpi = 96;
+        IntPtr big = IconFile.Load(path, GetSystemMetricsForDpi(SM_CXICON, dpi));
+        IntPtr small = IconFile.Load(path, GetSystemMetricsForDpi(SM_CXSMICON, dpi));
+        if (big != IntPtr.Zero && small != IntPtr.Zero) return (big, small);
+        IconFile.Destroy(big);
+        IconFile.Destroy(small);
+        return (IntPtr.Zero, IntPtr.Zero);
+    }
+
+    private void DestroyIcons()
+    {
+        IconFile.Destroy(_iconBig);
+        IconFile.Destroy(_iconSmall);
+        (_iconBig, _iconSmall) = (IntPtr.Zero, IntPtr.Zero);
+    }
 
     private static void EnsureClass()
     {
@@ -168,6 +224,9 @@ public sealed class OutputWindow : IDisposable
             case WM_USER + 1:
                 WindowIdentity.Clear(hwnd);
                 DestroyWindow(hwnd);
+                return IntPtr.Zero;
+            case WM_USER + 2:
+                ApplyIcon(hwnd);
                 return IntPtr.Zero;
             case WM_DESTROY:
                 lock (Windows) Windows.Remove(hwnd);

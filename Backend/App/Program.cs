@@ -42,6 +42,7 @@ public static class Program
             e.SetObserved();
         };
 
+        if (cli.PipelineHost != null) return PipelineChild.Run(cli.PipelineHost);
         if (cli.DecodeDumps != null) return Tools.DecodeDumps(cli.DecodeDumps, cli.Size);
         if (cli.AudioTestSeconds > 0) return Tools.AudioTest(cli.AudioTestSeconds, cli.AudioIn, cli.Report);
 
@@ -102,7 +103,8 @@ public static class Program
     private static void ConfigureLogging(CommandLine cli)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(AppInfo.LogFile)!);
-        string file = cli.IsToolMode ? Path.Combine(Path.GetDirectoryName(AppInfo.LogFile)!, "tools.log") : AppInfo.LogFile;
+        string file = cli.PipelineHost != null ? Path.Combine(Path.GetDirectoryName(AppInfo.LogFile)!, "picture.log")
+            : cli.IsToolMode ? Path.Combine(Path.GetDirectoryName(AppInfo.LogFile)!, "tools.log") : AppInfo.LogFile;
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.ControlledBy(_level)
             .WriteTo.Debug()
