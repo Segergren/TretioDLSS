@@ -860,8 +860,11 @@ public sealed class AppHost : IDisposable
         double dt = _lastStatsTick == 0 ? 0.25 : Math.Max(0.05, (now - _lastStatsTick) / 1000.0);
         _lastStatsTick = now;
         var c = p.Counters;
-        long src = Interlocked.Read(ref c.SourceFrames), real = Interlocked.Read(ref c.RealFrames), gen = Interlocked.Read(ref c.Generated);
-        long presented = real + gen;
+        // A game frame with an unchanged picture still counts: on a static screen the game keeps its rate.
+        long src = Interlocked.Read(ref c.SourceFrames), changed = Interlocked.Read(ref c.RealFrames), quiet = Interlocked.Read(ref c.QuietReal);
+        long gen = Interlocked.Read(ref c.Generated), held = Interlocked.Read(ref c.Held);
+        long real = changed + quiet;
+        long presented = changed + gen + held;
         // Rates over a 2 s window: one 250 ms tick would read 30 fps as 28 or 32.
         _rateWindow.Enqueue((now, src, real, presented));
         while (_rateWindow.Count > 9) _rateWindow.Dequeue();
@@ -874,7 +877,7 @@ public sealed class AppHost : IDisposable
             realFps = (real - first.Real) / span;
             outFps = (presented - first.Presented) / span;
         }
-        if (p.CadenceState == CadenceState.Locked && p.ClockPeriodMs > 0)
+        if (p.CadenceState != CadenceState.Unlocked && p.ClockPeriodMs > 0)
         {
             double clockFps = 1000.0 / p.ClockPeriodMs;
             if (Math.Abs(clockFps - realFps) < realFps * 0.1)

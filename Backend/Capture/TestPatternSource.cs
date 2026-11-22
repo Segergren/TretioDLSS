@@ -15,17 +15,18 @@ public sealed record PatternOptions(
     double DropRealProbability = 0,
     double JitterMs = 0,
     bool Black = false,
-    int Seed = 1)
+    int Seed = 1,
+    bool Pause = false)
 {
-    /// <summary>"30in60", optional layout suffix like "30in60:yuy2".</summary>
+    /// <summary>"30in60", optional suffixes like "30in60:yuy2" or "30in60:pause" (still picture 2 s of every 4 s).</summary>
     public static PatternOptions Parse(string spec, int width = 1920, int height = 1080)
     {
         var parts = spec.Split(':');
         var rates = parts[0].Split("in");
         double content = double.Parse(rates[0], System.Globalization.CultureInfo.InvariantCulture);
         double container = rates.Length > 1 ? double.Parse(rates[1], System.Globalization.CultureInfo.InvariantCulture) : content;
-        var layout = parts.Length > 1 ? ParseLayout(parts[1]) : PixelLayout.Nv12;
-        return new PatternOptions(content, container, layout, width, height);
+        var layout = parts.Skip(1).Where(p => p != "pause").Select(ParseLayout).DefaultIfEmpty(PixelLayout.Nv12).First();
+        return new PatternOptions(content, container, layout, width, height, Pause: parts.Contains("pause"));
     }
 
     public static PixelLayout ParseLayout(string s) => s.ToLowerInvariant() switch
@@ -109,6 +110,7 @@ public sealed class TestPatternSource : IVideoSource
             bool isNew = content != lastContent;
             if (isNew && _o.DropRealProbability > 0 && lastContent >= 0 && _rng.NextDouble() < _o.DropRealProbability)
                 isNew = false; // the game missed its frame time: the previous picture stays one more tick
+            if (_o.Pause && lastContent >= 0 && tick * periodMs % 4000 >= 2000) isNew = false;
             if (isNew)
             {
                 lastContent = content;

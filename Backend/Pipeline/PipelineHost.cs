@@ -187,11 +187,20 @@ public sealed class PipelineHost : IFrameSink, IDisposable
         if (frame is CpuFrame)
         {
             // CPU sources classify here, so a repeat never pushes a real frame out of the mailbox.
-            bool real;
-            lock (_cadenceGate) real = _cadence!.Push(frame.Diff);
+            bool real, quiet;
+            lock (_cadenceGate)
+            {
+                real = _cadence!.Push(frame.Diff);
+                quiet = _cadence.LastQuietRealSlot;
+            }
             if (!real)
             {
                 Interlocked.Increment(ref Counters.Repeats);
+                if (quiet)
+                {
+                    Interlocked.Exchange(ref _quietQpc, frame.CaptureQpc);
+                    _mailbox.Signal.Set();
+                }
                 frame.Dispose();
                 return;
             }
@@ -227,12 +236,16 @@ public sealed class PipelineHost : IFrameSink, IDisposable
         }
     }
 
+    // Capture time of the last real slot whose picture did not change; 0 when none is waiting.
+    private long _quietQpc;
+
     // ---- pipeline thread ----
 
     private sealed class Slot
     {
         public long DueQpc;
         public bool Generated;
+        public bool Hold;
         public float T;
         public long RealIndex;
         public RenderTexture? Frame;
@@ -261,6 +274,8 @@ public sealed class PipelineHost : IFrameSink, IDisposable
         long realIndex = -1;
         int presentIndex = 0;
         double lastClockMs = double.NaN;
+        double holdClockMs = double.NaN;
+        long lastRealQpc = 0;
         RenderTexture? prevReal = null;
         bool sceneCut = false;
         var oldLatency = GCSettings.LatencyMode;
@@ -369,6 +384,7 @@ public sealed class PipelineHost : IFrameSink, IDisposable
                 if (_stop) break;
 
                 var frame = _mailbox.Take();
+                long quietQpc = Interlocked.Exchange(ref _quietQpc, 0);
                 bool timing = frame != null || pending.Count > 0;
                 if (timing) timer.BeginFrame();
                 if (frame != null)
@@ -408,7 +424,11 @@ public sealed class PipelineHost : IFrameSink, IDisposable
                                 lastGpuFrame = new RenderTexture(g.Device, working.Width, working.Height, working.Format);
                             }
                             g.Context.CopyResource(lastGpuFrame.Texture, working.Texture);
-                            lock (_cadenceGate) isReal = _cadence.Push(d);
+                            lock (_cadenceGate)
+                            {
+                                isReal = _cadence.Push(d);
+                                if (_cadence.LastQuietRealSlot) quietQpc = frame.CaptureQpc;
+                            }
                             if (double.IsFinite(d) && gpuDiff.LastMean > CpuFrameDiff.SceneCutMean) sceneCut = true;
                             if (!isReal) Interlocked.Increment(ref Counters.Repeats);
                         }
@@ -423,7 +443,12 @@ public sealed class PipelineHost : IFrameSink, IDisposable
                             realIndex++;
                             double arrivalMs = Qpc.ToMs(frame.CaptureQpc);
                             int cycle;
-                            lock (_cadenceGate) cycle = _cadence.Cycle;
+                            CadenceState cadenceState;
+                            lock (_cadenceGate)
+                            {
+                                cycle = _cadence.Cycle;
+                                cadenceState = _cadence.State;
+                            }
                             if (cycle > 0 && cycle != clockCycle)
                             {
                                 // The content period is the cadence cycle times the container period.
@@ -434,6 +459,8 @@ public sealed class PipelineHost : IFrameSink, IDisposable
                             ClockPeriodMs = clock.PeriodMs;
                             ClockResyncs = clock.Resyncs;
                             lastClockMs = clockMs;
+                            holdClockMs = clockMs;
+                            lastRealQpc = frame.CaptureQpc;
 
                             // Output size: fit the content into the sink.
                             int srcW = working!.Width, srcH = working.Height;
@@ -464,8 +491,8 @@ public sealed class PipelineHost : IFrameSink, IDisposable
                             {
                                 for (int k = pending.Count - 1; k >= 0; k--)
                                 {
-                                    if (!pending[k].Generated) continue;
-                                    Interlocked.Increment(ref Counters.Late);
+                                    if (!pending[k].Generated && !pending[k].Hold) continue;
+                                    if (pending[k].Generated) Interlocked.Increment(ref Counters.Late);
                                     ReturnSlot(pending[k]);
                                     pending.RemoveAt(k);
                                 }
@@ -477,7 +504,7 @@ public sealed class PipelineHost : IFrameSink, IDisposable
                             double readyMs = Qpc.ToMs(Qpc.Now);
                             UpdateAllowance(readyMs - clockMs);
 
-                            if (n > 1 && prevReal != null && !sceneCut && _cadence.State != CadenceState.Unlocked)
+                            if (n > 1 && prevReal != null && !sceneCut && cadenceState != CadenceState.Unlocked)
                             {
                                 // The first generated frame can only start once this real frame is in, so its cost joins the budget.
                                 double budgetMs = _allowanceMs + Qpc.ToMs(_genLeadQpc);
@@ -522,6 +549,32 @@ public sealed class PipelineHost : IFrameSink, IDisposable
                             sceneCut = false;
                             prevReal = target;
                         }
+                    }
+                }
+
+                // A quiet slot older than the last real frame (after a stall) has nothing left to hold.
+                if (quietQpc != 0 && quietQpc > lastRealQpc && prevReal != null && double.IsFinite(holdClockMs))
+                {
+                    // The game sent a frame but nothing changed: show the last picture again on the same clock.
+                    Interlocked.Increment(ref Counters.QuietReal);
+                    double p = clock.PeriodMs;
+                    int m = Math.Max(1, (int)Math.Round((Qpc.ToMs(quietQpc) - holdClockMs) / p));
+                    holdClockMs += m * p;
+                    CadenceState holdState;
+                    lock (_cadenceGate) holdState = _cadence.State;
+                    int slots = n > 1 && holdState != CadenceState.Unlocked ? n : 1;
+                    double budgetMs = _allowanceMs + (slots > 1 ? Qpc.ToMs(_genLeadQpc) : 0);
+                    for (int j = 1; j <= slots; j++)
+                    {
+                        var hs = RentSlot();
+                        hs.DueQpc = slots > 1 ? Qpc.FromMs(Schedule.SlotTime(holdClockMs, p, n, budgetMs, j))
+                            : clocked ? Qpc.FromMs(holdClockMs + _allowanceMs) : Qpc.Now;
+                        hs.Hold = true;
+                        hs.RealIndex = realIndex;
+                        hs.Frame = prevReal;
+                        hs.ArrivalQpc = quietQpc;
+                        hs.ClockMs = holdClockMs;
+                        pending.Add(hs);
                     }
                 }
 
@@ -667,11 +720,9 @@ public sealed class PipelineHost : IFrameSink, IDisposable
             timer.BeginStage(3);
             _sink.Present(frame, new PresentedFrame(Qpc.Now, next.Generated, next.RealIndex, next.Generated ? next.T : 1), presentIndex++);
             timer.EndStage();
-            if (!next.Generated)
-            {
-                RecordDelay(Qpc.ToMs(Qpc.Now - next.ArrivalQpc));
-            }
-            if (_cfg.PreviewEnabled && Preview != null && !next.Generated) preview.Offer(g, frame, Preview, _previewIntervalMs);
+            if (next.Hold) Interlocked.Increment(ref Counters.Held);
+            else if (!next.Generated) RecordDelay(Qpc.ToMs(Qpc.Now - next.ArrivalQpc));
+            if (_cfg.PreviewEnabled && Preview != null && !next.Generated && !next.Hold) preview.Offer(g, frame, Preview, _previewIntervalMs);
             ReturnSlot(next);
         }
     }
@@ -737,6 +788,7 @@ public sealed class PipelineHost : IFrameSink, IDisposable
     private void ReturnSlot(Slot s)
     {
         s.Generated = false;
+        s.Hold = false;
         s.First = false;
         s.T = 0;
         if (s.Out != null) _genPool.Push(s.Out);

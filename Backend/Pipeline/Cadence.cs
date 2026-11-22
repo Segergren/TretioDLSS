@@ -146,6 +146,9 @@ public sealed class CadenceDetector
     public long Hitches { get; private set; }
     public long Relocks { get; private set; }
 
+    /// <summary>The last push was a real slot of the locked cadence with an unchanged picture.</summary>
+    public bool LastQuietRealSlot { get; private set; }
+
     /// <summary>Cadence as text, "2:2" style, or empty while unlocked.</summary>
     public string Label => State == CadenceState.Unlocked ? "" : $"{_cycle}:{_cycle}";
 
@@ -190,6 +193,7 @@ public sealed class CadenceDetector
     public bool Push(double diff)
     {
         long i = _index++;
+        LastQuietRealSlot = false;
         if (_o.Mode == "off") return true;
 
         bool repeat = IsRepeatLevel(diff);
@@ -214,6 +218,7 @@ public sealed class CadenceDetector
                 // or the picture is static; neither needs this frame.
                 _quietRealSlots++;
                 if (_quietRealSlots >= StaticAfter) State = CadenceState.Static;
+                LastQuietRealSlot = true;
                 return false;
             }
             bool afterGap = _quietRealSlots > 0 && State != CadenceState.Static;

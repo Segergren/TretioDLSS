@@ -55,6 +55,8 @@ public sealed class PipelineCounters
     public long SourceFrames;
     public long RealFrames;
     public long Repeats;
+    public long QuietReal;
+    public long Held;
     public long Generated;
     public long Presented;
     public long Dropped;

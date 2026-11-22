@@ -122,6 +122,23 @@ public class CadenceTests
     }
 
     [Fact]
+    public void QuietRealSlotsAreFlagged()
+    {
+        var d = New();
+        Feed(d, Cycle(2, 120));
+        var quiet = new List<bool>();
+        foreach (var v in Enumerable.Repeat(0.0, 40))
+        {
+            d.Push(v);
+            quiet.Add(d.LastQuietRealSlot);
+        }
+        // One quiet real slot per cycle, also once the picture counts as static.
+        Assert.Equal(20, quiet.Count(q => q));
+        d.Push(Change);
+        Assert.False(d.LastQuietRealSlot);
+    }
+
+    [Fact]
     public void VaryingRateNeverLocksButFindsChanges()
     {
         var rng = new Random(5);

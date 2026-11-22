@@ -83,6 +83,7 @@ public static class HeadlessRunner
         var log = host.PresentLog;
         var intervals = log.Zip(log.Skip(1), (a, b) => Qpc.ToMs(b.Qpc - a.Qpc)).ToList();
         double Pct(List<double> v, double p) => v.Count == 0 ? double.NaN : v.OrderBy(x => x).ElementAt(Math.Clamp((int)Math.Round(p * (v.Count - 1)), 0, v.Count - 1));
+        double medianInterval = Pct(intervals, 0.5);
         var report = new
         {
             source = spec,
@@ -96,6 +97,8 @@ public static class HeadlessRunner
                 real = c.RealFrames,
                 repeats = c.Repeats,
                 generated = c.Generated,
+                quietReal = c.QuietReal,
+                held = c.Held,
                 presented = c.Presented,
                 late = c.Late,
                 dropped = c.Dropped,
@@ -103,6 +106,7 @@ public static class HeadlessRunner
             },
             stagesGpuMs = host.Stages.Names.Select((n, i) => new { stage = n, p50 = host.Stages.Percentile(i, 0.5), p95 = host.Stages.Percentile(i, 0.95), p99 = host.Stages.Percentile(i, 0.99) }),
             presentIntervalMs = new { p01 = Pct(intervals, 0.01), p50 = Pct(intervals, 0.5), p99 = Pct(intervals, 0.99) },
+            longIntervals = intervals.Select((v, i) => (v, i)).Where(x => x.v > medianInterval * 1.5).Select(x => new { present = x.i + 1, ms = Math.Round(x.v, 2) }),
             clockPeriodMs = host.ClockPeriodMs,
             clockResyncs = host.ClockResyncs,
             sourceFps = host.MeasuredSourceFps,
