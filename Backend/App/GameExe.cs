@@ -59,6 +59,11 @@ public static class GameExe
             UpdateResources(temp, displayName, Path.GetFileName(target), icoPath);
             File.Move(temp, target, overwrite: true);
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && File.Exists(target))
+        {
+            Log.Warning("Game exe {Path} is in use; running the existing copy", target);
+            return target;
+        }
         finally
         {
             if (File.Exists(temp)) File.Delete(temp);

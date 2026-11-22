@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Serilog;
+using TretioDLSS.Audio;
 using TretioDLSS.Capture;
 using TretioDLSS.Core;
 using TretioDLSS.Engines;
@@ -14,25 +15,28 @@ using TretioDLSS.Platform;
 
 namespace TretioDLSS.App;
 
+/// <summary>Sound for the game process: the capture card's input played on this output, kept in step with the picture.</summary>
+internal sealed record AudioRequest(string InputId, string? OutputId, double Volume, bool AutoSync, int OffsetMs);
+
 internal sealed record StartRequest(Settings Settings, List<CaptureDevice> Devices, bool Tearing, string? Icon, double PreviewFps);
 
 internal sealed record PictureSnapshot(
     long SourceFrames, long RealFrames, long QuietReal, long Generated, long Held, long Dropped, long Late,
     CadenceState CadenceState, double ClockPeriodMs, double MedianDelayMs, SourceInfo? SourceInfo, string CadenceLabel,
     long Hitches, long Relocks, int ContentW, int ContentH, double[] Stages, bool CompareMode, string UpscalerStatus,
-    string NeuralLine, bool NoSignal, bool SmoothMotion, bool HasNeuralStage, bool NeuralRuntimeMissing)
+    string NeuralLine, bool NoSignal, bool SmoothMotion, bool HasNeuralStage, bool NeuralRuntimeMissing, string AudioError = "")
 {
     public static readonly PictureSnapshot Empty = new(0, 0, 0, 0, 0, 0, 0, CadenceState.Unlocked, 0, 0, null, "", 0, 0, 0, 0,
         new double[5], false, "", "", false, false, false, false);
 
-    public static PictureSnapshot Of(PipelineHost p)
+    public static PictureSnapshot Of(PipelineHost p, string audioError)
     {
         var c = p.Counters;
         return new(Interlocked.Read(ref c.SourceFrames), Interlocked.Read(ref c.RealFrames), Interlocked.Read(ref c.QuietReal),
             Interlocked.Read(ref c.Generated), Interlocked.Read(ref c.Held), Interlocked.Read(ref c.Dropped), Interlocked.Read(ref c.Late),
             p.CadenceState, p.ClockPeriodMs, p.MedianDelayMs(), p.SourceInfo, p.CadenceLabel, p.Hitches, p.Relocks,
             p.ContentSize.W, p.ContentSize.H, Enumerable.Range(0, 5).Select(p.StageMean).ToArray(), p.CompareMode, p.UpscalerStatus,
-            p.NeuralLine(), p.NoSignal, p.SmoothMotionActive, p.HasNeuralStage, p.NeuralRuntimeMissing);
+            p.NeuralLine(), p.NoSignal, p.SmoothMotionActive, p.HasNeuralStage, p.NeuralRuntimeMissing, audioError);
     }
 }
 
@@ -193,6 +197,11 @@ public sealed class RemotePipeline : IPipeline
     public void SetHdrLook(HdrConfig look) => _channel?.Send("hdr", look);
     public void ToggleCompare() => _channel?.Send("compare");
 
+    /// <summary>The capture card's sound plays from the game process, so apps that record that process get it too.</summary>
+    internal void StartAudio(AudioRequest audio) => _channel?.Send("audio", audio);
+    internal void SetAudio(AudioRequest audio) => _channel?.Send("audioset", audio);
+    public string AudioError => _snap.AudioError;
+
     public bool SetNeural(NeuralConfig cfg)
     {
         _channel?.Send("neural", cfg);
@@ -273,6 +282,15 @@ public static class PipelineChild
         var channel = new PipeChannel(pipe);
         PipelineHost? host = null;
         Timer? stats = null;
+        AudioBridge? audio = null;
+        AudioRequest? audioCfg = null;
+        void Tick(PipelineHost h)
+        {
+            var (a, c) = (audio, audioCfg);
+            if (a is { Running: true } && c != null)
+                a.SetExtraDelay(c.AutoSync ? Math.Max(0, h.MedianDelayMs() - a.PathLatencyMs) + c.OffsetMs : Math.Max(0, c.OffsetMs));
+            channel.Send("stats", PictureSnapshot.Of(h, a?.Error ?? ""));
+        }
         try
         {
             while (channel.Receive() is { } msg)
@@ -294,7 +312,7 @@ public static class PipelineChild
                             h.SetWindowIcon(req.Icon);
                             h.Start();
                             channel.Send("started", new { error = (string?)null });
-                            stats = new Timer(_ => channel.Send("stats", PictureSnapshot.Of(h)), null, 0, 250);
+                            stats = new Timer(_ => Tick(h), null, 0, 250);
                         }
                         catch (Exception ex)
                         {
@@ -311,6 +329,18 @@ public static class PipelineChild
                     case "hdr": host?.SetHdrLook(d.Deserialize<HdrConfig>(Json.Options)!); break;
                     case "neural": host?.SetNeural(d.Deserialize<NeuralConfig>(Json.Options)!); break;
                     case "compare": host?.ToggleCompare(); break;
+                    case "audio":
+                        audioCfg = d.Deserialize<AudioRequest>(Json.Options)!;
+                        var bridge = audio ??= new AudioBridge();
+                        bridge.SetVolume(audioCfg.Volume);
+                        // WASAPI wants a thread that is not this blocked STA thread.
+                        Task.Run(() => bridge.Start(audioCfg.InputId, audioCfg.OutputId)).Wait();
+                        Log.Information("Sound from {Input} plays in the game process{Error}", bridge.InputName, bridge.Error is { } e ? ": " + e : "");
+                        break;
+                    case "audioset":
+                        audioCfg = d.Deserialize<AudioRequest>(Json.Options)!;
+                        audio?.SetVolume(audioCfg.Volume);
+                        break;
                     case "rates":
                         if (host != null) host.LastRates = (d[0].GetDouble(), d[1].GetDouble(), d[2].GetDouble());
                         break;
@@ -323,6 +353,7 @@ public static class PipelineChild
         finally
         {
             stats?.Dispose();
+            audio?.Dispose();
             host?.Dispose();
             Log.Information("Picture process done");
             Log.CloseAndFlush();

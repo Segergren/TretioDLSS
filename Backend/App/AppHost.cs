@@ -416,6 +416,7 @@ public sealed class AppHost : IDisposable
             p.SetWindowTitle(WindowTitle(s));
         }
         _audio.SetVolume(s.Audio.Volume);
+        (_pipeline as RemotePipeline)?.SetAudio(AudioRequest(s, ""));
         UpdateStreamHost(s);
         RegisterHotkeys();
         _discord.Update(s.Discord, _pipeline != null);
@@ -619,10 +620,18 @@ public sealed class AppHost : IDisposable
             return;
         }
         _hints.Remove("audio");
+        if (_pipeline is RemotePipeline remote)
+        {
+            remote.StartAudio(AudioRequest(s, inputId));
+            return;
+        }
         _audio.SetVolume(s.Audio.Volume);
         _audio.Start(inputId, s.Audio.OutputId);
         if (_audio.Error != null) _hints["audio"] = new Hint("audio", "warning", _audio.Error);
     }
+
+    private static AudioRequest AudioRequest(Settings s, string inputId) =>
+        new(inputId, s.Audio.OutputId, s.Audio.Volume, s.Audio.AutoSync, s.Audio.OffsetMs);
 
     public bool PipelineRunning => _pipeline != null;
 
@@ -1027,6 +1036,12 @@ public sealed class AppHost : IDisposable
         var mon = Monitors.Find(_monitors, s.Display.MonitorId);
         string syncLabel = s.Display.Sync switch { "vsync" => "V-Sync", "vrr" => "VRR", "tearing" => "Tearing", _ => mon?.Vrr == true ? "VRR" : "V-Sync" };
         string outDetail = mon == null ? "" : $"{mon.Refresh:0} Hz, {syncLabel}";
+
+        if (p is RemotePipeline { AudioError: { Length: > 0 } audioError } && !_hints.ContainsKey("audio"))
+        {
+            _hints["audio"] = new Hint("audio", "warning", audioError);
+            PushState();
+        }
 
         // No-signal hint: the card keeps sending black frames, or nothing at all.
         if (info?.Kind is "uvc" or "pattern") UpdateNoSignal(p, sourceFps);
