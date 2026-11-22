@@ -136,6 +136,7 @@ public static class Tools
     public static int Install(string id, string? to)
     {
         if (to != null) VfxInstaller.TargetOverride = to;
+        if (id == NeuralRuntime.Id) return InstallNeural(to);
         if (id == "all")
         {
             int worst = 0;
@@ -144,7 +145,7 @@ public static class Tools
         }
         if (!VfxInstaller.Knows(id))
         {
-            Console.WriteLine("Unknown component; use vfx-vfg, vfx-vsr or all");
+            Console.WriteLine("Unknown component; use vfx-vfg, vfx-vsr, dlss5 or all");
             return 2;
         }
         Console.WriteLine($"Installing {id} into {VfxInstaller.InstallDir}");
@@ -157,6 +158,25 @@ public static class Tools
             last = pct;
         }).GetAwaiter().GetResult();
         Console.WriteLine(error ?? "Installed, and the effect loads");
+        return error == null ? 0 : 1;
+    }
+
+    /// <summary>The DLSS 5 runtime that runs on this PC's NVIDIA GPU, like the Download button.</summary>
+    private static int InstallNeural(string? to)
+    {
+        if (to != null) NeuralRuntime.TargetOverride = to;
+        uint? arch = Nvidia.NvApi.Instance?.Architecture();
+        var build = NeuralRuntime.For(arch);
+        Console.WriteLine($"Installing DLSS 5 {build.Name} into {NeuralRuntime.InstallDir}");
+        int last = -1;
+        string? error = NeuralRuntime.InstallAsync(arch, () =>
+        {
+            var s = NeuralRuntime.State(arch);
+            int pct = (int)(s.Progress * 100);
+            if (s.State == "downloading" && pct / 10 != last / 10) Console.WriteLine($"  {pct}% of {s.Bytes / 1e6:F0} MB");
+            last = pct;
+        }).GetAwaiter().GetResult();
+        Console.WriteLine(error ?? "Installed, checksum verified");
         return error == null ? 0 : 1;
     }
 

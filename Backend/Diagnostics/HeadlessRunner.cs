@@ -40,6 +40,7 @@ public static class HeadlessRunner
             FrameGen = fg,
             Multiplier = cli.Multiplier,
             FrameGenModel = cli.FrameGenModel,
+            Neural = Engines.NeuralConfig.From(cli.Neural, cli.Layers, cli.NeuralStyle, cli.NeuralIntensity, cli.NeuralModel, cli.NeuralAt),
             Sharpness = cli.Sharpness >= 0 ? cli.Sharpness : 0,
             Pacing = cli.Pacing == "clocked" ? PacingMode.Clocked : PacingMode.Immediate,
             Adapter = cli.Adapter ?? "auto",
@@ -76,6 +77,7 @@ public static class HeadlessRunner
         // Let the last interval's frames go out.
         Thread.Sleep(150);
         bool presentLayer = SmoothMotion.PresentLayerLoaded();
+        string neuralLine = host.NeuralLine();
         var faulted = host.Status == PipelineStatus.Faulted ? host.StatusMessage : null;
         host.Stop();
 
@@ -118,6 +120,7 @@ public static class HeadlessRunner
             generatedIndices = host.GeneratedIndices.Take(2000),
             upscaler = host.EffectiveUpscaler,
             upscalerStatus = host.UpscalerStatus,
+            neural = new { config = host.NeuralConfig, status = neuralLine },
             outputSize = new { w = host.OutputSize.W, h = host.OutputSize.H },
             contentSize = new { w = host.ContentSize.W, h = host.ContentSize.H },
             driverSmoothMotionEngaged = presentLayer,

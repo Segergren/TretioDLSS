@@ -1,5 +1,6 @@
 <#
-Builds TretioNgx.dll, the native bridge to NVIDIA's NGX (DLSS Frame Generation) and Optical Flow.
+Builds TretioNgx.dll, the native bridge to NVIDIA's NGX (DLSS Frame Generation and DLSS 5 Neural Rendering),
+and TretioNr.nvngx.dll, the module that makes the calls into the DLSS 5 runtime.
 Needs the MSVC x64 tools and ThirdParty/dlss (tools/dlss/fetch.ps1).
 
   Native/TretioNgx/build.ps1 [-Out <dir>]
@@ -28,3 +29,11 @@ $cmd = "`"$vcvars`" >nul && cl /nologo /std:c++20 /O2 /MT /EHsc /W3 /DNDEBUG /I`
 cmd /c $cmd
 if ($LASTEXITCODE -ne 0) { throw "TretioNgx build failed" }
 Write-Host "Built $dll"
+
+$callerObj = Join-Path $obj "caller"
+New-Item -ItemType Directory -Force $callerObj | Out-Null
+$caller = Join-Path $Out "TretioNr.nvngx.dll"
+$cmd = "`"$vcvars`" >nul && cl /nologo /O2 /MT /W3 /DNDEBUG /Fo`"$callerObj/`" `"$here\caller\NrCaller.cpp`" /LD /link /OUT:`"$caller`" /IMPLIB:`"$callerObj\TretioNr.lib`""
+cmd /c $cmd
+if ($LASTEXITCODE -ne 0) { throw "TretioNr.nvngx.dll build failed" }
+Write-Host "Built $caller"

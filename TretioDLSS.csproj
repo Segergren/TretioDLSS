@@ -74,18 +74,19 @@
     </ItemGroup>
   </Target>
 
-  <!-- DLSS Frame Generation: the native NGX bridge and NVIDIA's runtime, when ThirdParty/dlss is fetched (tools/dlss/fetch.ps1). -->
+  <!-- DLSS Frame Generation and DLSS 5: the native NGX bridge and NVIDIA's frame generation runtime, when ThirdParty/dlss is fetched (tools/dlss/fetch.ps1). The DLSS 5 runtime is downloaded by the app. -->
   <ItemGroup>
-    <TretioNgxSources Include="Native\TretioNgx\*.cpp;Native\TretioNgx\*.h;Native\TretioNgx\build.ps1" />
+    <TretioNgxSources Include="Native\TretioNgx\*.cpp;Native\TretioNgx\*.h;Native\TretioNgx\caller\*.cpp;Native\TretioNgx\build.ps1" />
   </ItemGroup>
 
-  <Target Name="BuildTretioNgx" Condition="Exists('ThirdParty\dlss\lib\nvsdk_ngx_s.lib')" Inputs="@(TretioNgxSources)" Outputs="Native\build\TretioNgx.dll">
+  <Target Name="BuildTretioNgx" Condition="Exists('ThirdParty\dlss\lib\nvsdk_ngx_s.lib')" Inputs="@(TretioNgxSources)" Outputs="Native\build\TretioNgx.dll;Native\build\TretioNr.nvngx.dll">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File Native\TretioNgx\build.ps1" />
   </Target>
 
   <Target Name="IncludeTretioNgx" BeforeTargets="AssignTargetPaths" DependsOnTargets="BuildTretioNgx">
     <ItemGroup>
       <None Include="Native\build\TretioNgx.dll" Condition="Exists('Native\build\TretioNgx.dll')" Link="TretioNgx.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+      <None Include="Native\build\TretioNr.nvngx.dll" Condition="Exists('Native\build\TretioNr.nvngx.dll')" Link="TretioNr.nvngx.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
       <None Include="ThirdParty\dlss\bin\nvngx_dlssg.dll" Condition="Exists('ThirdParty\dlss\bin\nvngx_dlssg.dll')" Link="nvngx_dlssg.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>

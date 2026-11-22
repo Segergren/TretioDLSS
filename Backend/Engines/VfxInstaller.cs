@@ -7,7 +7,7 @@ using TretioDLSS.App;
 
 namespace TretioDLSS.Engines;
 
-public sealed record InstallState(string State, double Progress, long Bytes, string? Error);
+public sealed record InstallState(string State, double Progress, long Bytes, string? Error, string? From = null);
 
 /// <summary>
 /// Installs Video Effects features from NVIDIA's public nvidia-vfx wheel. Only the

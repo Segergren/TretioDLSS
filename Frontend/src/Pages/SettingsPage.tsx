@@ -5,12 +5,13 @@ import { Button } from '../Components/Button';
 import { Dropdown } from '../Components/Dropdown';
 import { OptionRow, Panel, Slider, TextInput, Toggle } from '../Components/Controls';
 import { useStore } from '../lib/store';
-import { engineOptions, formatLabel, outputChoices } from '../lib/options';
+import { engineOptions, formatLabel, layersLabel, outputChoices } from '../lib/options';
 
 const sections = [
   { id: 'source', label: 'Source' },
   { id: 'upscaling', label: 'Upscaling' },
   { id: 'framegen', label: 'Frame generation' },
+  { id: 'neural', label: 'DLSS 5' },
   { id: 'display', label: 'Display' },
   { id: 'tv', label: 'TV' },
   { id: 'audio', label: 'Audio' },
@@ -277,6 +278,80 @@ export function SettingsPage({ section }: { section: string | null }) {
               />
             </OptionRow>
           ))}
+        </Panel>
+
+        <Panel id="neural" eyebrow="Pipeline" title="DLSS 5">
+          <OptionRow label="Neural rendering" helper="NVIDIA's model reworks light and materials in every real frame, the HUD included">
+            <Dropdown
+              ariaLabel="DLSS 5"
+              className="w-72"
+              align="right"
+              value={s.neural.engine}
+              options={engineOptions(state.neuralEngines ?? [], (id) => send('InstallComponent', { id }))}
+              onChange={(engine) => update({ neural: { engine } })}
+            />
+          </OptionRow>
+          {s.neural.engine === 'dlss5' && (
+            <>
+              <OptionRow label="Layers" helper="Each layer strengthens the look and adds about 3 ms at 1080p on an RTX 4090">
+                <Dropdown
+                  ariaLabel="Layers"
+                  className="w-72"
+                  value={String(s.neural.layers)}
+                  options={[1, 2, 3, 4].map((n) => ({ value: String(n), label: layersLabel(n) }))}
+                  onChange={(v) => update({ neural: { layers: Number(v) } })}
+                />
+              </OptionRow>
+              <OptionRow label="Style">
+                <Dropdown
+                  ariaLabel="Style"
+                  className="w-72"
+                  value={s.neural.style}
+                  options={[
+                    { value: 'default', label: 'Default' },
+                    { value: 'natural', label: 'Natural' },
+                    { value: 'cinematic', label: 'Cinematic' },
+                  ]}
+                  onChange={(style) => update({ neural: { style } })}
+                />
+              </OptionRow>
+              <OptionRow label="Intensity" helper="0% leaves the picture as it is" stacked>
+                <Slider
+                  label="Intensity"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={s.neural.intensity}
+                  format={(v) => `${Math.round(v * 100)}%`}
+                  onChange={(intensity) => update({ neural: { intensity } })}
+                />
+              </OptionRow>
+              <OptionRow label="Model" helper="The original model costs about twice as much">
+                <Dropdown
+                  ariaLabel="Model"
+                  className="w-72"
+                  value={s.neural.model}
+                  options={[
+                    { value: 'fast', label: 'Fast, October 2026' },
+                    { value: 'original', label: 'Original, September 2026' },
+                  ]}
+                  onChange={(model) => update({ neural: { model } })}
+                />
+              </OptionRow>
+              <OptionRow label="Runs on" helper="Before upscaling costs less: fewer pixels per layer">
+                <Dropdown
+                  ariaLabel="Runs on"
+                  className="w-72"
+                  value={s.neural.placement}
+                  options={[
+                    { value: 'source', label: 'Capture size, before upscaling' },
+                    { value: 'output', label: 'Output size, after upscaling' },
+                  ]}
+                  onChange={(placement) => update({ neural: { placement } })}
+                />
+              </OptionRow>
+            </>
+          )}
         </Panel>
 
         <Panel id="display" eyebrow="Output" title="Display">

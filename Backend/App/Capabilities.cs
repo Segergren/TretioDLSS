@@ -15,6 +15,8 @@ public sealed class Capabilities
     public string GpuName { get; private set; } = "";
     public bool Nvidia { get; internal set; }
     public bool Ada { get; private set; }
+    /// <summary>NvAPI architecture id of the NVIDIA GPU (0x190 Ada, 0x1B0 Blackwell), or null.</summary>
+    public uint? Arch { get; private set; }
     public string Driver { get; private set; } = "";
     public string? VfxRuntime { get; private set; }
     public bool RifeReady { get; private set; }
@@ -71,6 +73,7 @@ public sealed class Capabilities
             var nv = NvApi.Instance;
             c.Driver = nv?.DriverVersion() ?? "";
             var arch = nv?.Architecture();
+            c.Arch = arch;
             // RTX 40 is Ada (0x190), RTX 50 is Blackwell (0x1B0 and up).
             c.Ada = arch is uint a2 && a2 >= 0x190 || c.GpuName.Contains("RTX 40") || c.GpuName.Contains("RTX 50");
             c.Rows.Add(new("NVIDIA", "Driver", string.IsNullOrEmpty(c.Driver) ? "Unknown" : c.Driver, !string.IsNullOrEmpty(c.Driver)));
@@ -85,6 +88,12 @@ public sealed class Capabilities
         {
             var dir = TretioDLSS.Engines.VfxRuntime.FindFor(id);
             c.Rows.Add(new("NVIDIA", name, dir == null ? "Not downloaded yet" : $"Ready, from {dir}", dir != null));
+        }
+        if (c.Nvidia)
+        {
+            var nr = NeuralRuntime.Installed();
+            bool fits = NeuralRuntime.IsInstalledFor(c.Arch);
+            c.Rows.Add(new("NVIDIA", "DLSS 5", nr == null ? "Not downloaded yet" : fits ? $"Ready, {nr.Name}" : $"{nr.Name} does not run on this GPU; download again", nr != null && fits));
         }
         c.AmfVersion = AmfFrameGenerator.RuntimeVersion();
         c.Rows.Add(new("Engines", "AMD Frame Generation", c.AmfVersion == null ? "No AMD driver (AMF runtime missing)" : c.AmdPipeline ? $"Ready, AMF {c.AmfVersion}" : $"AMF {c.AmfVersion} found, but the picture runs on {c.GpuName}", c.AmfVersion != null && c.AmdPipeline));

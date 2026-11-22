@@ -32,7 +32,8 @@ public static class Profiles
             "nis" => "NIS",
             var x => x,
         };
-        return $"{input}, {fg}, {up}";
+        string summary = $"{input}, {fg}, {up}";
+        return p.Neural.Engine == "dlss5" ? $"{summary}, DLSS 5 with {p.Neural.Layers} layer{(p.Neural.Layers == 1 ? "" : "s")}" : summary;
     }
 
     public static IEnumerable<ProfileInfo> List(Settings s) => s.Profiles.Select(p => new ProfileInfo(p.Name, Summary(p)));
@@ -54,6 +55,7 @@ public static class Profiles
         p.Source = snap.Source;
         p.Cadence = snap.Cadence;
         p.Upscale = snap.Upscale;
+        p.Neural = snap.Neural;
         p.FrameGen = snap.FrameGen;
         p.Display = snap.Display;
     }
@@ -64,6 +66,7 @@ public static class Profiles
         s.Source = Clone(p.Source);
         s.Cadence = Clone(p.Cadence);
         s.Upscale = Clone(p.Upscale);
+        s.Neural = Clone(p.Neural);
         s.FrameGen = Clone(p.FrameGen);
         s.Display = Clone(p.Display);
         s.ActiveProfile = p.Name;
@@ -75,6 +78,7 @@ public static class Profiles
         Source = Clone(s.Source),
         Cadence = Clone(s.Cadence),
         Upscale = Clone(s.Upscale),
+        Neural = Clone(s.Neural),
         FrameGen = Clone(s.FrameGen),
         Display = Clone(s.Display),
     };

@@ -2,11 +2,31 @@ import { DropdownOption } from '../Components/Dropdown';
 import { AppWindow, FileVideo, Grid3x3, Monitor, Tv, Video, type LucideIcon } from 'lucide-react';
 import { AppState, CaptureDevice, CaptureFormat, EngineInfo, MonitorInfo } from '../Models/types';
 
-/** Multiplier picker in each frame generation row: the current engine and multiplier, and how to pick one. */
+/** Variant picker in an engine row (the frame multiplier, or DLSS 5's layers): the current engine and value, and how to pick one. */
 export interface MultiplierPick {
   engine: string;
   multiplier: number;
   pick: (engine: string, multiplier: number) => void;
+  /** Chip text; "x2" when not given. */
+  label?: (value: number) => string;
+  /** What the picker picks, for screen readers; "multiplier" when not given. */
+  noun?: string;
+}
+
+export const layersLabel = (n: number) => `${n} layer${n === 1 ? '' : 's'}`;
+
+/** Engine names short enough for a stage tile; menus keep the full names. */
+const shortNames: Record<string, string> = {
+  'vfx-vsr': 'RTX Video',
+  nis: 'NIS',
+  'vfx-vfg': 'NVIDIA FG',
+  'dlss-fg': 'DLSS FG',
+  'amd-frc': 'AMD FG',
+};
+
+export function tileName(id: string, fullName?: string): string {
+  if (id === 'off') return 'Off';
+  return shortNames[id] ?? fullName ?? id;
 }
 
 export function engineOptions(engines: EngineInfo[], onInstall?: (id: string) => void, multiplier?: MultiplierPick): DropdownOption<any>[] {
@@ -21,8 +41,9 @@ export function engineOptions(engines: EngineInfo[], onInstall?: (id: string) =>
       const list = e.multipliers;
       const shown = Math.min(Math.max(multiplier.multiplier, list[0]), list[list.length - 1]);
       opt.choicesActive = multiplier.engine === e.id;
+      opt.choicesNoun = multiplier.noun;
       opt.choices = list.map((m) => ({
-        label: `x${m}`,
+        label: multiplier.label ? multiplier.label(m) : `x${m}`,
         selected: m === shown,
         run: () => multiplier.pick(e.id, m),
       }));
@@ -37,7 +58,7 @@ export function engineOptions(engines: EngineInfo[], onInstall?: (id: string) =>
         opt.reason = inst.error ?? 'Download failed';
         opt.action = { label: 'Retry', run: () => onInstall(e.id) };
       } else {
-        opt.reason = `${size} from NVIDIA`;
+        opt.reason = `${size} from ${inst.from ?? 'NVIDIA'}`;
         opt.action = { label: 'Download', run: () => onInstall(e.id) };
       }
     }

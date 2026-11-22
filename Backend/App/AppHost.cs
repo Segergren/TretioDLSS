@@ -218,7 +218,7 @@ public sealed class AppHost : IDisposable
                 case "UpdateSettings":
                     Settings.ApplyPatch(p);
                     // Picking the engine the last run died in is the explicit retry.
-                    if (SafeMode.Disabled is string off && (Settings.Current.Upscale.Engine == off || Settings.Current.FrameGen.Engine == off))
+                    if (SafeMode.Disabled is string off && (Settings.Current.Upscale.Engine == off || Settings.Current.FrameGen.Engine == off || Settings.Current.Neural.Engine == off))
                     {
                         SafeMode.Retry(off);
                         _hints.Remove("safemode");
@@ -352,14 +352,18 @@ public sealed class AppHost : IDisposable
                 case "InstallComponent":
                 {
                     string id = p.GetProperty("id").GetString() ?? "";
-                    if (!VfxInstaller.Knows(id)) break;
+                    if (!VfxInstaller.Knows(id) && id != NeuralRuntime.Id) break;
                     Task.Run(async () =>
                     {
-                        string? error = await VfxInstaller.InstallAsync(id, PushState);
+                        string? error = id == NeuralRuntime.Id
+                            ? await NeuralRuntime.InstallAsync(Caps.Arch, PushState)
+                            : await VfxInstaller.InstallAsync(id, PushState);
                         if (error == null)
                         {
                             Caps = Capabilities.Detect();
                             PushState();
+                            // A run that started before the download picks DLSS 5 up by restarting.
+                            if (id == NeuralRuntime.Id && _pipeline is { } live && !live.SetNeural(NeuralFrom(Settings.Current.Neural))) RestartPipeline();
                         }
                         Toast(error == null ? "info" : "error", error == null ? $"{EngineCatalog.Name(id)} downloaded" : error);
                     });
@@ -400,8 +404,11 @@ public sealed class AppHost : IDisposable
     {
         VfxRuntime.ConfiguredPath = s.Advanced.VfxRuntimePath;
         var p = _pipeline;
+        bool restart = false;
         if (p != null)
         {
+            // DLSS 5 changes apply live; a run that started without the stage (nothing downloaded yet) restarts.
+            restart = !p.SetNeural(NeuralFrom(s.Neural)) && NeuralRuntime.IsInstalledFor(Caps.Arch) && NeuralRuntime.BridgeMissing() == null;
             p.SetSharpness(s.Upscale.Sharpness);
             p.SetHdrLook(HdrLook(s));
             p.SetOverlay(s.Display.Overlay);
@@ -411,6 +418,7 @@ public sealed class AppHost : IDisposable
         UpdateStreamHost(s);
         RegisterHotkeys();
         _discord.Update(s.Discord, _pipeline != null);
+        if (restart) Task.Run(RestartPipeline);
     }
 
     private void SelectProfile(string name)
@@ -800,6 +808,9 @@ public sealed class AppHost : IDisposable
         else StartPipeline();
     }
 
+    internal static NeuralConfig NeuralFrom(NeuralSettings n) =>
+        NeuralConfig.From(n.Engine, n.Layers, n.Style, n.Intensity, n.Model, n.Placement);
+
     private PipelineConfig BuildConfig(Settings s, Func<Graphics.GraphicsDevice, OutputSink>? sinkFactory = null)
     {
         var monitor = sinkFactory != null ? null : Monitors.Find(_monitors, s.Display.MonitorId) ?? throw new InvalidOperationException("No display found");
@@ -826,6 +837,7 @@ public sealed class AppHost : IDisposable
             FrameGen = fg,
             Multiplier = s.FrameGen.Multiplier,
             FrameGenModel = s.FrameGen.Model,
+            Neural = NeuralFrom(s.Neural),
             Sharpness = s.Upscale.Sharpness,
             SizeMode = s.Upscale.Size,
             Color = new ColorSpec(s.Source.ColorMatrix, s.Source.ColorRange),
@@ -943,7 +955,7 @@ public sealed class AppHost : IDisposable
             outputEstimated = false,
             addedDelayMs = p.MedianDelayMs(),
             delayNotMeasured = false,
-            gpuPercent = Math.Min(100, (p.Stages.RecentMean(0) + p.Stages.RecentMean(1) + p.Stages.RecentMean(3)) * realFps / 10 + p.Stages.RecentMean(2) * genFps / 10),
+            gpuPercent = Math.Min(100, (p.Stages.RecentMean(0) + p.Stages.RecentMean(1) + p.Stages.RecentMean(3) + p.Stages.RecentMean(PipelineHost.NeuralStage)) * realFps / 10 + p.Stages.RecentMean(2) * genFps / 10),
             dropped = Interlocked.Read(ref c.Dropped),
             late = Interlocked.Read(ref c.Late),
             cadence,
@@ -951,6 +963,7 @@ public sealed class AppHost : IDisposable
             sourceDetail,
             upscaleDetail = upDetail,
             frameGenDetail = fgDetail,
+            neuralDetail = p.NeuralLine(),
             outputDetail = outDetail,
             history = new { real = _histReal.ToArray(), generated = _histGen.ToArray() },
         });
@@ -1040,6 +1053,7 @@ public sealed class AppHost : IDisposable
             audioInputs = _audioIn.Select(a => new { id = a.Id, name = a.Name, isDefault = a.IsDefault }),
             audioOutputs = _audioOut.Select(a => new { id = a.Id, name = a.Name, isDefault = a.IsDefault }),
             upscalers = EngineCatalog.Upscalers(Caps),
+            neuralEngines = EngineCatalog.Neural(Caps),
             frameGenerators = EngineCatalog.FrameGenerators(Caps),
             pipeline = new { status, message = p == null && _tvWaiting ? "Waiting for the TV" : p?.StatusMessage },
             gpuName = Caps.GpuName,

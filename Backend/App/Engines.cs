@@ -15,6 +15,7 @@ public static class EngineCatalog
         "vfx-vsr" or "rtx-video" => "RTX Video",
         "vfx-vfg" => "NVIDIA Frame Generation",
         "dlss-fg" => "DLSS Frame Generation",
+        NeuralRuntime.Id => "DLSS 5",
         "rife" => "RIFE",
         "amd-frc" => "AMD Frame Generation",
         "fsr1" => "FSR 1",
@@ -48,6 +49,26 @@ public static class EngineCatalog
             [
                 new("quality", "Quality", [new("low", "Low"), new("medium", "Medium"), new("high", "High"), new("ultra", "Ultra")]),
             ]));
+        return WithSafeMode(list);
+    }
+
+    /// <summary>The DLSS 5 stage: Off, or DLSS 5 with 1 to 4 layers (sent as the multipliers).</summary>
+    public static List<EngineInfo> Neural(Capabilities caps)
+    {
+        int[] layers = [1, 2, 3, 4];
+        var list = new List<EngineInfo> { new("off", "Off", true) };
+        if (!caps.Nvidia)
+            list.Add(new(NeuralRuntime.Id, "DLSS 5", false, "Needs an NVIDIA RTX GPU", "Needs an NVIDIA RTX GPU", layers));
+        else if (!caps.Ada)
+            list.Add(new(NeuralRuntime.Id, "DLSS 5", false, "Needs an RTX 40 or 50 series GPU", "Needs an RTX 40 or 50 series GPU", layers));
+        else if (!NeuralRuntime.DriverOk(caps.Driver))
+            list.Add(new(NeuralRuntime.Id, "DLSS 5", false, $"Needs NVIDIA driver {NeuralRuntime.MinDriver:0.00} or newer", $"Update the NVIDIA driver to {NeuralRuntime.MinDriver:0.00} or newer", layers));
+        else if (NeuralRuntime.BridgeMissing() is string missing)
+            list.Add(new(NeuralRuntime.Id, "DLSS 5", false, "Not installed", missing, layers));
+        else if (!NeuralRuntime.IsInstalledFor(caps.Arch))
+            list.Add(new(NeuralRuntime.Id, "DLSS 5", false, "Not downloaded", "Download it", layers, Install: NeuralRuntime.State(caps.Arch)));
+        else
+            list.Add(new(NeuralRuntime.Id, "DLSS 5", true, Multipliers: layers));
         return WithSafeMode(list);
     }
 

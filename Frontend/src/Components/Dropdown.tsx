@@ -15,6 +15,8 @@ export interface DropdownOption<T extends string> {
   choices?: { label: string; selected: boolean; run: () => void }[];
   /** The row's variant is the one in use, so the picker is highlighted. */
   choicesActive?: boolean;
+  /** What the picker picks, for screen readers; "multiplier" when not given. */
+  choicesNoun?: string;
 }
 
 interface Props<T extends string> {
@@ -154,6 +156,8 @@ export function Dropdown<T extends string>({
         >
           {options.map((opt, i) => {
             const isSel = opt.value === value;
+            // A one-line row centers its label on the picker or button beside it; a second line keeps the label on top.
+            const multiline = !!(opt.reason || opt.detail || opt.action?.busy);
             return (
               <li
                 key={opt.value}
@@ -163,7 +167,7 @@ export function Dropdown<T extends string>({
                 onMouseEnter={() => setActive(i)}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => choose(opt)}
-                className={`flex items-start gap-2.5 rounded-xl px-2.5 py-2 ${
+                className={`flex ${multiline ? 'items-start' : 'items-center'} gap-2.5 rounded-xl px-2.5 py-2 ${
                   opt.disabled ? 'cursor-not-allowed' : 'cursor-pointer'
                 } ${i === active && (!opt.disabled || opt.action) ? 'bg-marquee' : ''}`}
               >
@@ -202,7 +206,7 @@ export function Dropdown<T extends string>({
                 </span>
                 {opt.choices && !opt.disabled && (
                   <ChoicePicker
-                    label={opt.label}
+                    label={`${opt.label} ${opt.choicesNoun ?? 'multiplier'}`}
                     choices={opt.choices}
                     active={!!opt.choicesActive}
                     onPicked={() => setOpen(false)}
@@ -280,7 +284,7 @@ function ChoicePicker({
       <button
         type="button"
         tabIndex={-1}
-        aria-label={`${label} multiplier`}
+        aria-label={label}
         aria-haspopup="listbox"
         aria-expanded={rect != null}
         onClick={(e) => setRect(rect ? null : e.currentTarget.getBoundingClientRect())}
@@ -294,7 +298,7 @@ function ChoicePicker({
       {rect && (
         <span
           role="listbox"
-          aria-label={`${label} multiplier`}
+          aria-label={label}
           className={`fixed z-[60] flex flex-col rounded-xl border border-edge bg-boulevard p-1 ${up ? 'menu-drop' : 'menu-rise'}`}
           style={{
             right: window.innerWidth - rect.right,

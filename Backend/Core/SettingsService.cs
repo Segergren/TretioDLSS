@@ -84,6 +84,13 @@ public sealed class SettingsService
         s.Audio.Volume = Math.Clamp(s.Audio.Volume, 0, 1);
         s.Audio.OffsetMs = Math.Clamp(s.Audio.OffsetMs, -200, 300);
         s.FrameGen.Multiplier = Math.Clamp(s.FrameGen.Multiplier, 1, 8);
+        var n = s.Neural ??= new NeuralSettings();
+        if (n.Engine is not ("off" or "dlss5")) n.Engine = "off";
+        n.Layers = Math.Clamp(n.Layers, 1, 4);
+        n.Intensity = double.IsFinite(n.Intensity) ? Math.Clamp(n.Intensity, 0, 1) : 1;
+        if (n.Style is not ("default" or "natural" or "cinematic")) n.Style = "default";
+        if (n.Model is not ("fast" or "original")) n.Model = "fast";
+        if (n.Placement is not ("source" or "output")) n.Placement = "source";
         var h = s.Display.Hdr;
         h.PaperWhite = Math.Clamp(h.PaperWhite, 80, 500);
         h.Expand = Math.Clamp(h.Expand, 0, 1);

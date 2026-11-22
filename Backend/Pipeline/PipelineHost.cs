@@ -33,7 +33,8 @@ public sealed class PipelineHost : IFrameSink, IDisposable
     private Exception? _startError;
 
     public PipelineCounters Counters { get; } = new();
-    public StageTimes Stages { get; } = new("ingest", "upscale", "framegen", "present");
+    public StageTimes Stages { get; } = new("ingest", "upscale", "framegen", "present", "neural");
+    public const int NeuralStage = 4;
     public PipelineStatus Status { get; private set; } = PipelineStatus.Idle;
     public string? StatusMessage { get; private set; }
     public event Action? StatusChanged;
@@ -110,7 +111,25 @@ public sealed class PipelineHost : IFrameSink, IDisposable
         _cfg = cfg;
         _overlayVisible = cfg.Overlay;
         _sharpness = cfg.Sharpness;
+        _neuralCfg = cfg.Neural;
     }
+
+    private volatile NeuralRenderer? _neural;
+    private volatile NeuralConfig _neuralCfg;
+    private volatile bool _neuralRuntimeMissing;
+
+    /// <summary>Applies DLSS 5 settings while running. False when it is switched on but this run started before its download.</summary>
+    public bool SetNeural(NeuralConfig cfg)
+    {
+        _neuralCfg = cfg;
+        var n = _neural;
+        if (n == null) return !(cfg.Enabled && _neuralRuntimeMissing);
+        n.Configure(cfg);
+        return true;
+    }
+
+    public NeuralConfig NeuralConfig => _neuralCfg;
+    public string NeuralStatus => _neural?.Status ?? (_neuralCfg.Enabled ? "Not available" : "Off");
 
     public void SetOverlay(bool visible) => _overlayVisible = visible;
 
@@ -263,6 +282,7 @@ public sealed class PipelineHost : IFrameSink, IDisposable
         Ingest? ingest = null;
         IUpscaler? upscaler = null, compare = null;
         IFrameGenerator? generator = null;
+        NeuralRenderer? neural = null;
         GpuFrameDiff? gpuDiff = null;
         GpuTimer? timer = null;
         OutputWindow? window = null;
@@ -338,11 +358,20 @@ public sealed class PipelineHost : IFrameSink, IDisposable
             var clock = new SourceClock(containerPeriodMs);
             int clockCycle = 1;
 
-            SafeMode.Enter([_cfg.Upscaler, _cfg.FrameGen]);
+            SafeMode.Enter(_neuralCfg.Enabled ? [_cfg.Upscaler, _cfg.FrameGen, NeuralRuntime.Id] : [_cfg.Upscaler, _cfg.FrameGen]);
             upscaler = CreateUpscaler(g, _cfg.Upscaler, info);
             EffectiveUpscaler = upscaler.Id;
             compare = new ShaderUpscaler(g, "bilinear");
             generator = CreateGenerator(g, _cfg.FrameGen, _cfg.FrameGenModel, _cfg.Multiplier);
+            neural = _neural = NeuralRenderer.TryCreate(g, _neuralCfg, out bool runtimeMissing);
+            _neuralRuntimeMissing = runtimeMissing;
+            if (neural != null)
+            {
+                // The first session starts now for the size the frames will have; a different size starts another.
+                var fitN = ContentFit(info.Width, info.Height);
+                if (neural.BeforeUpscale) neural.Prepare(info.Width, info.Height);
+                else neural.Prepare(fitN.W, fitN.H);
+            }
             int n = generator == null ? 1 : FrameGen.ClampMultiplier(generator.Id, _cfg.Multiplier);
             if (generator != null)
             {
@@ -478,12 +507,25 @@ public sealed class PipelineHost : IFrameSink, IDisposable
                                 prevReal = null;
                             }
 
+                            if (neural != null && sceneCut) neural.Reset();
+                            if (neural != null && neural.BeforeUpscale)
+                            {
+                                timer.BeginStage(NeuralStage);
+                                neural.Process(working);
+                                timer.EndStage();
+                            }
                             timer.BeginStage(1);
                             var active = _compareMode ? compare : upscaler;
                             active.Process(ingest, target);
                             target.Stamp = realIndex + 1;
                             timer.EndStage();
                             if (upscaler.Status.Length > 0 && upscaler.Status != UpscalerStatus) UpscalerStatus = upscaler.Status;
+                            if (neural != null && !neural.BeforeUpscale)
+                            {
+                                timer.BeginStage(NeuralStage);
+                                neural.Process(target);
+                                timer.EndStage();
+                            }
 
                             // Overrun: generated frames of the previous interval still pending are dropped,
                             // and that interval's real frame goes out now.
@@ -625,6 +667,8 @@ public sealed class PipelineHost : IFrameSink, IDisposable
             lastGpuFrame?.Dispose();
             preview.Dispose();
             generator?.Dispose();
+            _neural = null;
+            neural?.Dispose();
             upscaler?.Dispose();
             compare?.Dispose();
             if (_sink is SwapChainSink chain) RefreshHistogram = chain.RefreshHistogram;
@@ -845,8 +889,20 @@ public sealed class PipelineHost : IFrameSink, IDisposable
             $"Added delay\t{MedianDelayMs():0.0} ms",
             $"Upscale\t{App.EngineCatalog.Name(EffectiveUpscaler)}{(_compareMode ? " (compare: Bilinear)" : "")}",
             $"GPU upscale\t{Stages.RecentMean(1):0.00} ms",
+            $"DLSS 5\t{NeuralLine()}",
             $"Dropped / late\t{Counters.Dropped} / {Counters.Late}",
         ];
+    }
+
+    /// <summary>For the overlay and the stats: layers, style and GPU time, or why DLSS 5 does not run.</summary>
+    public string NeuralLine()
+    {
+        var cfg = _neuralCfg;
+        string status = NeuralStatus;
+        if (!cfg.Enabled) return "Off";
+        if (status != "Running") return status;
+        string style = NeuralConfig.Styles[Math.Clamp(cfg.Style, 0, 2)];
+        return $"{cfg.Layers} layer{(cfg.Layers == 1 ? "" : "s")}, {char.ToUpperInvariant(style[0])}{style[1..]}, {Stages.RecentMean(NeuralStage):0.0} ms";
     }
 
     public (double Source, double Real, double Output) LastRates { get; set; }

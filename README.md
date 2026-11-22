@@ -13,10 +13,11 @@ Made for 30 fps console games like GTA VI (Grand Theft Auto 6) on PS5 and Xbox S
 - Capture cards through Media Foundation, with the card's sound passed through in sync. Window capture for PS Remote Play.
 - Upscaling: RTX Video, FSR 1, NVIDIA Image Scaling, bicubic and bilinear.
 - Frame generation: NVIDIA Frame Generation, DLSS Frame Generation (x3 and x4 on RTX 40 through an in-memory unlock), RIFE on any GPU, and AMD Frame Generation, x2 to x4.
+- DLSS 5 Neural Rendering on RTX 40 and 50: NVIDIA's model reworks light and materials in every real frame, with 1 to 4 stacked layers, three styles and an intensity slider. Its runtime is downloaded when you pick it.
 - Cadence detection that finds the real frames in a 60 Hz signal (30 real in 60), so only new frames are processed.
 - Low-delay output window with VRR or vsync pacing, HDR output, TV mode and a stats overlay.
 
-DLSS Super Resolution cannot run on captured video, because it needs motion vectors and depth from the game engine. DLSS Frame Generation can: it runs on the captured frames with zero motion vectors and estimates the motion itself.
+DLSS Super Resolution cannot run on captured video, because it needs motion vectors and depth from the game engine. DLSS Frame Generation can: it runs on the captured frames with zero motion vectors and estimates the motion itself. So can DLSS 5 Neural Rendering, with a constant depth and zero motion vectors.
 
 ## Build
 

@@ -17,6 +17,7 @@ public sealed record PipelineConfig
     public string FrameGen { get; init; } = "off";
     public int Multiplier { get; init; } = 1;
     public string FrameGenModel { get; init; } = "medium";
+    public Engines.NeuralConfig Neural { get; init; } = Engines.NeuralConfig.Off;
     public double Sharpness { get; init; } = 0.2;
     public string SizeMode { get; init; } = "display";
     public ColorSpec Color { get; init; } = new("auto", "auto");

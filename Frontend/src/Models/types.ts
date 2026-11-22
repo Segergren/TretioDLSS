@@ -6,6 +6,10 @@ export type CadenceMode = 'auto' | 'off' | 'fixed';
 export type UpscaleEngineId = 'off' | 'bilinear' | 'bicubic' | 'fsr1' | 'nis' | 'vfx-vsr';
 export type UpscaleSize = 'display' | 'supersample' | 'source' | 'integer' | 'custom';
 export type FrameGenEngineId = 'off' | 'blend' | 'vfx-vfg' | 'dlss-fg' | 'rife' | 'amd-frc';
+export type NeuralEngineId = 'off' | 'dlss5';
+export type NeuralStyle = 'default' | 'natural' | 'cinematic';
+export type NeuralModel = 'fast' | 'original';
+export type NeuralPlacement = 'source' | 'output';
 export type StageOrder = 'auto' | 'upscale-first' | 'framegen-first';
 export type DisplayMode = 'borderless' | 'windowed';
 export type SyncMode = 'auto' | 'vrr' | 'tearing' | 'vsync';
@@ -32,6 +36,8 @@ export interface Settings {
   source: SourceSettings;
   cadence: { mode: CadenceMode; fixedFps: number };
   upscale: { engine: UpscaleEngineId; size: UpscaleSize; sharpness: number; options: Record<string, unknown> };
+  /** DLSS 5 Neural Rendering: 1 to 4 stacked layers over each real frame. */
+  neural: { engine: NeuralEngineId; layers: number; style: NeuralStyle; intensity: number; model: NeuralModel; placement: NeuralPlacement };
   frameGen: {
     engine: FrameGenEngineId;
     multiplier: number;
@@ -79,6 +85,8 @@ export interface InstallState {
   progress: number;
   bytes: number;
   error?: string | null;
+  /** Where the download comes from; NVIDIA when not given. */
+  from?: string | null;
 }
 
 export interface CaptureFormat {
@@ -171,6 +179,8 @@ export interface AppState {
   audioInputs: AudioDevice[];
   audioOutputs: AudioDevice[];
   upscalers: EngineInfo[];
+  /** Off and DLSS 5; the multipliers are the layer counts. */
+  neuralEngines: EngineInfo[];
   frameGenerators: EngineInfo[];
   pipeline: PipelineState;
   gpuName: string;
@@ -211,6 +221,7 @@ export interface Stats {
   sourceDetail: string;
   upscaleDetail: string;
   frameGenDetail: string;
+  neuralDetail: string;
   outputDetail: string;
   history: { real: number[]; generated: number[] };
 }
@@ -230,6 +241,7 @@ export const emptyStats: Stats = {
   sourceDetail: '',
   upscaleDetail: '',
   frameGenDetail: '',
+  neuralDetail: '',
   outputDetail: '',
   history: { real: [], generated: [] },
 };

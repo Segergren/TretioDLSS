@@ -13,6 +13,12 @@ public sealed class CommandLine
     public string? FrameGen { get; private set; }
     public string FrameGenModel { get; private set; } = "medium";
     public int Multiplier { get; private set; } = 2;
+    public string Neural { get; private set; } = "off";
+    public int Layers { get; private set; } = 1;
+    public string NeuralStyle { get; private set; } = "default";
+    public double NeuralIntensity { get; private set; } = 1;
+    public string NeuralModel { get; private set; } = "fast";
+    public string NeuralAt { get; private set; } = "source";
     public int Frames { get; private set; } = 600;
     public string? Report { get; private set; }
     public string? Output { get; private set; }
@@ -93,6 +99,12 @@ public sealed class CommandLine
                 case "--framegen": c.FrameGen = Next(); break;
                 case "--multiplier": c.Multiplier = int.Parse(Next()); break;
                 case "--fg-model": c.FrameGenModel = Next(); break;
+                case "--neural": c.Neural = Next(); break;
+                case "--layers": c.Layers = int.Parse(Next()); break;
+                case "--nr-style": c.NeuralStyle = Next(); break;
+                case "--nr-intensity": c.NeuralIntensity = NextD(); break;
+                case "--nr-model": c.NeuralModel = Next(); break;
+                case "--nr-at": c.NeuralAt = Next(); break;
                 case "--frames": c.Frames = int.Parse(Next()); break;
                 case "--report": c.Report = Next(); break;
                 case "--output": c.Output = Next(); break;

@@ -41,6 +41,7 @@ const settings = {
   },
   cadence: { mode: 'auto', fixedFps: 30 },
   upscale: { engine: 'vfx-vsr', size: 'display', sharpness: 0.2, options: { quality: 'high' } },
+  neural: { engine: scenario === 'dlss5' ? 'dlss5' : 'off', layers: 2, style: 'default', intensity: 1, model: 'fast', placement: 'source' },
   frameGen: { engine: 'vfx-vfg', multiplier: 2, model: 'medium', version: '', stageOrder: 'auto', options: {} },
   display: {
     monitorId: scenario === 'tv' ? 'tv:uuid:lg-g2' : 'mon1',
@@ -130,6 +131,12 @@ const state = {
     { id: 'nis', name: 'NVIDIA Image Scaling', available: true },
     { id: 'vfx-vsr', name: 'RTX Video', available: true, options: [{ key: 'quality', label: 'Quality', values: [{ value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' }, { value: 'ultra', label: 'Ultra' }] }] },
   ],
+  neuralEngines: [
+    { id: 'off', name: 'Off', available: true },
+    scenario === 'nodlss5'
+      ? { id: 'dlss5', name: 'DLSS 5', available: false, reason: 'Not downloaded', fixHint: 'Download it', multipliers: [1, 2, 3, 4], install: { state: 'none', progress: 0, bytes: 192_378_839, from: 'GitHub' } }
+      : { id: 'dlss5', name: 'DLSS 5', available: true, multipliers: [1, 2, 3, 4] },
+  ],
   frameGenerators: [
     { id: 'off', name: 'Off', available: true },
     {
@@ -211,6 +218,7 @@ function startTicker() {
       sourceDetail: '30 real / 60 Hz',
       upscaleDetail: '1080p to 1440p, 2.1 ms',
       frameGenDetail: mult > 1 ? `x${mult}, ${real * mult} fps out` : 'Real frames only',
+      neuralDetail: state.settings.neural.engine === 'dlss5' ? `${state.settings.neural.layers} layers, Default, ${(2.9 * state.settings.neural.layers + 0.7).toFixed(1)} ms` : 'Off',
       outputDetail: '360 Hz, VRR',
       history,
     });
@@ -342,7 +350,7 @@ wss.on('connection', (ws, req) => {
         break;
       case 'InstallComponent': {
         // Like the app: progress pushed with the state, then the engine reads as downloaded.
-        const engine = [...state.upscalers, ...state.frameGenerators].find((e) => e.id === Parameters.id);
+        const engine = [...state.upscalers, ...state.neuralEngines, ...state.frameGenerators].find((e) => e.id === Parameters.id);
         if (!engine?.install || engine.install.state === 'downloading') break;
         const fail = scenario === 'installfail';
         let progress = 0;
@@ -355,7 +363,7 @@ wss.on('connection', (ws, req) => {
           } else if (progress >= 1) {
             clearInterval(timer);
             engine.install = null;
-            if (engine.id === 'vfx-vfg') {
+            if (engine.id === 'vfx-vfg' || engine.id === 'dlss5') {
               engine.available = true;
               delete engine.reason;
               delete engine.fixHint;

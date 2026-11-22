@@ -3,6 +3,7 @@ import {
   ChevronDown,
   GalleryHorizontalEnd,
   Info,
+  Layers,
   Maximize2,
   Monitor,
   SlidersHorizontal,
@@ -23,12 +24,14 @@ import {
   engineOptions,
   formatDelay,
   isTvOutput,
+  layersLabel,
   outputChoices,
+  tileName,
   outputName,
   sourceChoices,
   sourceDetail,
 } from '../lib/options';
-import { AppState } from '../Models/types';
+import { AppState, NeuralEngineId } from '../Models/types';
 
 export function PlayPage({ onOpenSettings }: { onOpenSettings: (section: string) => void }) {
   const { state, stats, preview, update, send } = useStore();
@@ -39,11 +42,14 @@ export function PlayPage({ onOpenSettings }: { onOpenSettings: (section: string)
 
   const upscaler = state.upscalers.find((e) => e.id === s.upscale.engine);
   const frameGen = state.frameGenerators.find((e) => e.id === s.frameGen.engine);
+  const neuralOn = s.neural.engine === 'dlss5';
+  // Live trouble with DLSS 5 (it could not start, or stopped) shows as a notice; the tile keeps the setting.
+  const neuralTrouble = live && neuralOn && /^(Could not start|Stopped|Not available)/.test(stats.neuralDetail) ? stats.neuralDetail : null;
   const tvOut = isTvOutput(state);
   const noSignal = state.hints.find((h) => h.id === 'nosignal');
   const sourceOk = sourceReady(state);
 
-  const frameGenTitle = s.frameGen.engine === 'off' ? 'Off' : (frameGen?.name ?? s.frameGen.engine);
+  const frameGenTitle = tileName(s.frameGen.engine, frameGen?.name);
 
   const onSource = (v: string) => {
     if (v.startsWith('uvc:')) {
@@ -115,7 +121,7 @@ export function PlayPage({ onOpenSettings }: { onOpenSettings: (section: string)
           </p>
         </div>
 
-        <div className="absolute right-6 bottom-6 left-6 grid grid-cols-2 gap-2.5 min-[1000px]:grid-cols-4">
+        <div className="absolute right-6 bottom-6 left-6 grid grid-cols-3 gap-2.5 min-[1000px]:grid-cols-5">
           <StageTile
             icon={Video}
             label="Source"
@@ -129,7 +135,7 @@ export function PlayPage({ onOpenSettings }: { onOpenSettings: (section: string)
           <StageTile
             icon={Maximize2}
             label="Upscale"
-            value={upscaler?.name ?? 'Off'}
+            value={tileName(s.upscale.engine, upscaler?.name)}
             ariaLabel="Upscaler"
             current={s.upscale.engine}
             options={engineOptions(state.upscalers, (id) => send('InstallComponent', { id }))}
@@ -147,7 +153,23 @@ export function PlayPage({ onOpenSettings }: { onOpenSettings: (section: string)
               (id) => send('InstallComponent', { id }),
               { engine: s.frameGen.engine, multiplier: s.frameGen.multiplier, pick: (engine, multiplier) => send('SetFrameGenEngine', { engine, multiplier }) },
             )}
+            align="right"
             onChange={(engine) => send('SetFrameGenEngine', { engine })}
+          />
+          <StageTile
+            icon={Layers}
+            label="DLSS 5"
+            value={neuralOn ? layersLabel(s.neural.layers) : 'Off'}
+            ariaLabel="DLSS 5"
+            current={s.neural.engine}
+            options={engineOptions(state.neuralEngines ?? [], (id) => send('InstallComponent', { id }), {
+              engine: s.neural.engine,
+              multiplier: s.neural.layers,
+              pick: (engine, layers) => update({ neural: { engine: engine as NeuralEngineId, layers } }),
+              label: layersLabel,
+              noun: 'layers',
+            })}
+            onChange={(engine) => update({ neural: { engine } })}
           />
           <StageTile
             icon={Monitor}
@@ -166,6 +188,7 @@ export function PlayPage({ onOpenSettings }: { onOpenSettings: (section: string)
       {(state.pipeline.status === 'faulted' || (state.pipeline.status === 'waiting' && !tvOut)) && state.pipeline.message && (
         <Notice level={state.pipeline.status === 'faulted' ? 'error' : 'warning'} text={state.pipeline.message} />
       )}
+      {neuralTrouble && <Notice level="warning" text={`DLSS 5: ${neuralTrouble}. The picture goes through without it.`} />}
       {tvOut && <TvPanel />}
       {state.hints.filter((h) => h.id !== 'nosignal' && !(tvOut && h.id === 'tvwait' && h.level === 'info')).map((h) => (
         <Notice
@@ -230,7 +253,7 @@ function StageTile<T extends string>({
       onChange={onChange}
       disabled={disabled}
       align={align}
-      triggerClassName="frost flex h-16 items-center gap-3 rounded-[18px] border border-edge px-4 transition-colors duration-200 enabled:hover:border-edge-strong"
+      triggerClassName="frost flex h-16 items-center gap-2.5 rounded-[18px] border border-edge px-4 transition-colors duration-200 enabled:hover:border-edge-strong"
       renderTrigger={(open) => (
         <>
           <Icon size={20} className="shrink-0 text-dusk" aria-hidden />

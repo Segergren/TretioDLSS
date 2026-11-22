@@ -6,6 +6,7 @@ public sealed class Settings
     public SourceSettings Source { get; set; } = new();
     public CadenceSettings Cadence { get; set; } = new();
     public UpscaleSettings Upscale { get; set; } = new();
+    public NeuralSettings Neural { get; set; } = new();
     public FrameGenSettings FrameGen { get; set; } = new();
     public DisplaySettings Display { get; set; } = new();
     public TvSettings Tv { get; set; } = new();
@@ -70,6 +71,23 @@ public sealed class UpscaleSettings
     public string Size { get; set; } = "display";
     public double Sharpness { get; set; } = 0.2;
     public Dictionary<string, string> Options { get; set; } = new();
+}
+
+/// <summary>DLSS 5 Neural Rendering on the real frames.</summary>
+public sealed class NeuralSettings
+{
+    /// <summary>"off" or "dlss5".</summary>
+    public string Engine { get; set; } = "off";
+    /// <summary>Stacked passes, 1 to 4; each one strengthens the look and costs the same again.</summary>
+    public int Layers { get; set; } = 1;
+    /// <summary>"default", "natural" or "cinematic".</summary>
+    public string Style { get; set; } = "default";
+    /// <summary>0 keeps the picture, 1 is the full effect.</summary>
+    public double Intensity { get; set; } = 1.0;
+    /// <summary>"fast" (the October 2026 model) or "original" (September 2026, twice the cost).</summary>
+    public string Model { get; set; } = "fast";
+    /// <summary>"source" runs at capture size before upscaling; "output" runs on the upscaled picture.</summary>
+    public string Placement { get; set; } = "source";
 }
 
 public sealed class FrameGenSettings
@@ -163,6 +181,7 @@ public sealed class ProfileData
     public SourceSettings Source { get; set; } = new();
     public CadenceSettings Cadence { get; set; } = new();
     public UpscaleSettings Upscale { get; set; } = new();
+    public NeuralSettings Neural { get; set; } = new();
     public FrameGenSettings FrameGen { get; set; } = new();
     public DisplaySettings Display { get; set; } = new();
 }

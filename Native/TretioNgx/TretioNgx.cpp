@@ -12,6 +12,7 @@
 #include <nvsdk_ngx_defs_dlssg.h>
 #include <nvsdk_ngx_helpers_dlssg.h>
 
+#include "D3d12Util.h"
 #include "MfgUnlock.h"
 
 #include <cstdint>
@@ -23,8 +24,6 @@
 #include <vector>
 
 using Microsoft::WRL::ComPtr;
-
-typedef void(__cdecl* TngxLog)(int level, const char* message);
 
 struct TngxDesc
 {
@@ -62,27 +61,6 @@ void NVSDK_CONV NgxLog(const char* message, NVSDK_NGX_Logging_Level, NVSDK_NGX_F
 {
     if (message) Log(0, std::string("NGX: ") + message);
 }
-
-std::string Hex(uint64_t v) { return std::format("0x{:X}", v); }
-
-struct Tracked
-{
-    ComPtr<ID3D12Resource> res;
-    D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
-
-    void To(ID3D12GraphicsCommandList* list, D3D12_RESOURCE_STATES next)
-    {
-        if (state == next) return;
-        D3D12_RESOURCE_BARRIER b{};
-        b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        b.Transition.pResource = res.Get();
-        b.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-        b.Transition.StateBefore = state;
-        b.Transition.StateAfter = next;
-        list->ResourceBarrier(1, &b);
-        state = next;
-    }
-};
 
 __declspec(noinline) NVSDK_NGX_Result SafeInit(const char* projectId, const wchar_t* dataDir, ID3D12Device* device, const NVSDK_NGX_FeatureCommonInfo* info, DWORD& seh)
 {
