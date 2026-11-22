@@ -2,36 +2,33 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Check, Search } from 'lucide-react';
 import { onMessage, send } from '../lib/bridge';
 
-interface Game {
+export interface Game {
   id: string;
   name: string;
   icon: string;
 }
 
-/** Typeable select over Discord's list of known games. */
-export function GamePicker({ value, onChange, className = '' }: { value: string; onChange: (name: string) => void; className?: string }) {
-  const [text, setText] = useState(value);
-  const [open, setOpen] = useState(false);
+/** Debounced search over Discord's list of known games while `enabled`. */
+export function useDiscordGames(text: string, enabled: boolean, onResults?: () => void) {
   const [games, setGames] = useState<Game[]>([]);
-  const [active, setActive] = useState(0);
-  const rootRef = useRef<HTMLDivElement>(null);
   const lastQuery = useRef('');
-  const id = useId();
-
-  useEffect(() => setText(value), [value]);
+  const resultsRef = useRef(onResults);
+  useEffect(() => {
+    resultsRef.current = onResults;
+  });
 
   useEffect(
     () =>
       onMessage((method, content) => {
         if (method !== 'DiscordGames' || content?.query !== lastQuery.current) return;
         setGames(content.games ?? []);
-        setActive(0);
+        resultsRef.current?.();
       }),
     [],
   );
 
   useEffect(() => {
-    if (!open) return;
+    if (!enabled) return;
     const q = text.trim();
     const t = setTimeout(() => {
       lastQuery.current = q;
@@ -39,7 +36,21 @@ export function GamePicker({ value, onChange, className = '' }: { value: string;
       else send('SearchDiscordGames', { query: q });
     }, 150);
     return () => clearTimeout(t);
-  }, [text, open]);
+  }, [text, enabled]);
+
+  return games;
+}
+
+/** Typeable select over Discord's list of known games. */
+export function GamePicker({ value, onChange, className = '' }: { value: string; onChange: (name: string) => void; className?: string }) {
+  const [text, setText] = useState(value);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const games = useDiscordGames(text, open, () => setActive(0));
+
+  useEffect(() => setText(value), [value]);
 
   useEffect(() => {
     if (!open) return;
@@ -97,7 +108,7 @@ export function GamePicker({ value, onChange, className = '' }: { value: string;
             setOpen(true);
           }}
           onKeyDown={onKey}
-          className="min-w-0 flex-1 bg-transparent text-[0.9375rem] text-chalk placeholder:text-dusk outline-none"
+          className="min-w-0 flex-1 bg-transparent text-[0.9375rem] text-chalk placeholder:text-dusk outline-none!"
         />
       </div>
       {open && text.trim().length > 0 && (

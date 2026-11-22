@@ -56,7 +56,7 @@ export function ProfileMenu() {
         onClick={() => (open ? close() : setOpen(true))}
         className="flex h-11 max-w-[260px] items-center gap-2 rounded-full border border-edge bg-white/6 pr-3 pl-4 text-[0.9375rem] leading-none transition-colors duration-200 hover:border-edge-strong"
       >
-        <span className="text-dusk">Profile</span>
+        <span className="py-0.5 leading-normal text-dusk">Profile</span>
         <span className="min-w-0 truncate py-0.5 leading-normal font-medium text-chalk">{active}</span>
         <ChevronDown size={16} className={`shrink-0 text-dusk transition-transform duration-200 ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
