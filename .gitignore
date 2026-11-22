@@ -56,3 +56,4 @@ releases/
 # Python
 __pycache__/
 *.pyc
+*.tsbuildinfo
