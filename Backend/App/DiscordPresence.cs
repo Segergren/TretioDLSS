@@ -7,6 +7,46 @@ using TretioDLSS.Core;
 namespace TretioDLSS.App;
 
 /// <summary>
+/// The play session behind the Discord timer. It is saved, so restarting the app keeps counting;
+/// a break of 30 minutes or more, or another game, starts a new one.
+/// </summary>
+public sealed record DiscordSession(string Game, DateTime StartUtc, DateTime LastSeenUtc)
+{
+    public static readonly TimeSpan BreakReset = TimeSpan.FromMinutes(30);
+
+    public static DiscordSession Resume(DiscordSession? saved, string game, DateTime nowUtc) =>
+        saved != null && string.Equals(saved.Game, game, StringComparison.OrdinalIgnoreCase)
+            && nowUtc - saved.LastSeenUtc < BreakReset && saved.StartUtc <= nowUtc
+            ? saved with { LastSeenUtc = nowUtc }
+            : new DiscordSession(game, nowUtc, nowUtc);
+
+    public static DiscordSession? Load(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? JsonSerializer.Deserialize<DiscordSession>(File.ReadAllText(path), Json.Compact) : null;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug(ex, "Discord session file unreadable");
+            return null;
+        }
+    }
+
+    public void Save(string path)
+    {
+        try
+        {
+            File.WriteAllText(path, JsonSerializer.Serialize(this, Json.Compact));
+        }
+        catch (Exception ex)
+        {
+            Log.Debug(ex, "Discord session not saved");
+        }
+    }
+}
+
+/// <summary>
 /// Shows the console game as a Discord activity while playback runs. The game name is matched against
 /// Discord's list of detectable games, and the presence is sent under that game's own application id,
 /// so Discord shows the real game with its icon.
@@ -16,13 +56,15 @@ public sealed class DiscordPresence : IDisposable
     private const string DetectableUrl = "https://discord.com/api/v10/applications/detectable";
     private static readonly TimeSpan CacheAge = TimeSpan.FromDays(3);
     private static string CacheFile => Path.Combine(AppInfo.DataFolder, "discord-games.json");
+    private static string SessionFile => Path.Combine(AppInfo.DataFolder, "discord-session.json");
 
     private readonly object _gate = new();
     private DiscordRpcClient? _client;
     private string _appId = "";
     private string _wanted = "";
-    private string _start = "";
-    private DateTime? _startUtc;
+    private DiscordSession? _session;
+    private bool _sessionLoaded;
+    private Timer? _heartbeat;
     private Dictionary<string, (string Id, string Name)>? _games;
     private List<GameEntry>? _list;
 
@@ -46,15 +88,35 @@ public sealed class DiscordPresence : IDisposable
     public void Update(DiscordSettings s, bool running)
     {
         string wanted = s.Enabled && running ? s.Game.Trim() : "";
-        string start = s.StartTime.Trim();
         lock (_gate)
         {
-            if (wanted == _wanted && start == _start) return;
-            if (wanted != _wanted || _startUtc == null) _startUtc = DateTime.UtcNow;
+            if (wanted == _wanted) return;
+            if (!_sessionLoaded)
+            {
+                _session = DiscordSession.Load(SessionFile);
+                _sessionLoaded = true;
+            }
+            var now = DateTime.UtcNow;
+            // Leaving a game marks where the break starts; showing one resumes its session unless the break was long.
+            if (_wanted.Length > 0 && _session != null) _session = _session with { LastSeenUtc = now };
+            if (wanted.Length > 0) _session = DiscordSession.Resume(_session, wanted, now);
+            _session?.Save(SessionFile);
             _wanted = wanted;
-            _start = start;
+            _heartbeat?.Dispose();
+            _heartbeat = wanted.Length > 0 ? new Timer(_ => Heartbeat(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1)) : null;
         }
         Task.Run(() => Apply(wanted));
+    }
+
+    /// <summary>While a game shows, the session notes the time every minute, so a crash still ends its break correctly.</summary>
+    private void Heartbeat()
+    {
+        lock (_gate)
+        {
+            if (_wanted.Length == 0 || _session == null) return;
+            _session = _session with { LastSeenUtc = DateTime.UtcNow };
+            _session.Save(SessionFile);
+        }
     }
 
     private async Task Apply(string wanted)
@@ -86,7 +148,7 @@ public sealed class DiscordPresence : IDisposable
                     _client.OnError += (_, e) => Log.Warning("Discord: {Message}", e.Message);
                     _client.Initialize();
                 }
-                _client.SetPresence(new RichPresence { Timestamps = new Timestamps(StartUtc()) });
+                _client.SetPresence(new RichPresence { Timestamps = new Timestamps(_session?.StartUtc ?? DateTime.UtcNow) });
                 Status = $"Showing {game.Value.Name}";
                 Log.Information("Discord: showing {Game} (application {Id})", game.Value.Name, game.Value.Id);
             }
@@ -162,18 +224,6 @@ public sealed class DiscordPresence : IDisposable
         return (map, list);
     }
 
-    /// <summary>The fixed start time today (yesterday if it lies ahead), else when playback started.</summary>
-    private DateTime StartUtc()
-    {
-        if (TimeOnly.TryParse(_start, out var t))
-        {
-            var local = DateTime.Today.Add(t.ToTimeSpan());
-            if (local > DateTime.Now) local = local.AddDays(-1);
-            return local.ToUniversalTime();
-        }
-        return _startUtc ?? DateTime.UtcNow;
-    }
-
     private static string Normalize(string s) =>
         new string(s.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
 
@@ -189,5 +239,18 @@ public sealed class DiscordPresence : IDisposable
         }
     }
 
-    public void Dispose() => Close();
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            _heartbeat?.Dispose();
+            _heartbeat = null;
+            if (_wanted.Length > 0 && _session != null)
+            {
+                _session = _session with { LastSeenUtc = DateTime.UtcNow };
+                _session.Save(SessionFile);
+            }
+        }
+        Close();
+    }
 }

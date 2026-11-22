@@ -151,8 +151,6 @@ public sealed class DiscordSettings
 {
     public bool Enabled { get; set; }
     public string Game { get; set; } = "Grand Theft Auto VI";
-    /// <summary>"HH:mm" for a fixed start time; empty starts the timer with playback.</summary>
-    public string StartTime { get; set; } = "";
 }
 
 public sealed class UiSettings

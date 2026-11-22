@@ -505,27 +505,14 @@ export function SettingsPage({ section }: { section: string | null }) {
           <OptionRow label="Close to tray" helper="The close button hides the window; the picture keeps running">
             <Toggle label="Close to tray" checked={s.ui.closeToTray} onChange={(closeToTray) => update({ ui: { closeToTray } })} />
           </OptionRow>
-          <OptionRow label="Discord status" helper={state.discordStatus || 'Shows the game on your Discord profile while the picture runs'}>
+          <OptionRow
+            label="Discord status"
+            helper={state.discordStatus || 'Shows the game on your Discord profile while the picture runs. The time keeps counting across restarts and starts over after a 30 minute break'}
+          >
             <Toggle label="Discord status" checked={s.discord.enabled} onChange={(enabled) => update({ discord: { enabled } })} />
           </OptionRow>
           <OptionRow label="Discord game" helper="The game's name as Discord lists it">
             <GamePicker className="w-72" value={s.discord.game} onChange={(game) => update({ discord: { game } })} />
-          </OptionRow>
-          <OptionRow label="Discord start time" helper="Empty counts from when the picture starts">
-            <div className="flex items-center gap-2">
-              <input
-                type="time"
-                aria-label="Discord start time"
-                value={s.discord.startTime}
-                onChange={(e) => update({ discord: { startTime: e.target.value } })}
-                className="h-10 rounded-xl border border-edge-strong bg-night px-3 text-[0.9375rem] text-chalk [color-scheme:dark] transition-colors duration-200 hover:border-dusk"
-              />
-              {s.discord.startTime && (
-                <Button size="sm" onClick={() => update({ discord: { startTime: '' } })}>
-                  Clear
-                </Button>
-              )}
-            </div>
           </OptionRow>
           <OptionRow label="Updates" helper={state.update?.status || 'Not checked yet'}>
             {state.update?.ready ? (

@@ -58,7 +58,7 @@ export interface Settings {
   };
   advanced: { adapter: string; logLevel: string; vfxRuntimePath: string };
   ui: { closeToTray: boolean; lastVersion: string; onboarded: boolean };
-  discord: { enabled: boolean; game: string; startTime: string };
+  discord: { enabled: boolean; game: string };
   activeProfile: string;
 }
 

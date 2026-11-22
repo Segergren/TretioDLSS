@@ -63,7 +63,7 @@ const settings = {
   },
   advanced: { adapter: 'auto', logLevel: 'info', vfxRuntimePath: '' },
   ui: { closeToTray: false, lastVersion: '0.1.0', onboarded: scenario !== 'setup' },
-  discord: { enabled: false, game: 'Grand Theft Auto VI', startTime: '' },
+  discord: { enabled: false, game: 'Grand Theft Auto VI' },
   activeProfile: 'Profile 1',
 };
 
